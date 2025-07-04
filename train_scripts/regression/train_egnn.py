@@ -236,14 +236,16 @@ def main():
             # Load best model and evaluate on ID/OOD
             model.load_state_dict(torch.load(best_model_path))
             reg_head.load_state_dict(torch.load(best_reg_head_path))
-            _, id_mae = evaluate(model, reg_head, id_loader, device, desc="ID Test", target_index=target_index, normalizer=normalizer)
-            _, ood_mae = evaluate(model, reg_head, ood_loader, device, desc="OOD Test", target_index=target_index, normalizer=normalizer)
+            id_loss, id_mae = evaluate(model, reg_head, id_loader, device, desc="ID Test", target_index=target_index, normalizer=normalizer)
+            ood_loss, ood_mae = evaluate(model, reg_head, ood_loader, device, desc="OOD Test", target_index=target_index, normalizer=normalizer)
             print(
                 f"Target {target_name} | Seed {seed} | ID Test MAE: {id_mae:.4f} | OOD Test MAE: {ood_mae:.4f}"
             )
 
             with open(os.path.join(out_dir, "results.txt"), "w") as f:
                 f.write(f"Best Val MAE: {best_val_mae:.4f}\n")
+                f.write(f"ID Test MSE: {id_loss:.4f}\n")
+                f.write(f"OOD Test MSE: {ood_loss:.4f}\n")
                 f.write(f"ID Test MAE: {id_mae:.4f}\n")
                 f.write(f"OOD Test MAE: {ood_mae:.4f}\n")
             
