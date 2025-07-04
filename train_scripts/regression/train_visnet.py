@@ -54,6 +54,7 @@ def train(model, loader, optimizer, epoch, num_epochs, device, target_index):
     pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]", leave=False)
     for batch in pbar:
         batch = batch.to(device)
+        optimizer.zero_grad()
         outputs = model(batch)
         labels = batch.regression_label if hasattr(batch, 'regression_label') else batch.y
         if labels.dim() == 1:
@@ -70,7 +71,7 @@ def train(model, loader, optimizer, epoch, num_epochs, device, target_index):
     avg_loss = running_loss / total
     return avg_loss
 
-def evaluate(model, loader, device, desc, target_index):
+def evaluate(model, loader, device, desc, target_index, normalizer=None):
     model.eval()
     total = 0
     running_loss = 0.0
@@ -87,7 +88,24 @@ def evaluate(model, loader, device, desc, target_index):
             else:
                 target = labels[:, target_index].unsqueeze(1)
             loss = criterion(outputs, target)
-            mae = torch.mean(torch.abs(outputs - target)).item()
+            
+            # Convert to original scale for MAE calculation if normalizer is used
+            if normalizer is not None:
+                # Convert normalized predictions and targets back to original scale
+                outputs_orig = torch.tensor(
+                    normalizer.inverse_transform(outputs.cpu().numpy()),
+                    dtype=torch.float,
+                    device=device
+                )
+                target_orig = torch.tensor(
+                    normalizer.inverse_transform(target.cpu().numpy()),
+                    dtype=torch.float,
+                    device=device
+                )
+                mae = torch.mean(torch.abs(outputs_orig - target_orig)).item()
+            else:
+                mae = torch.mean(torch.abs(outputs - target)).item()
+            
             running_loss += loss.item() * target.size(0)
             running_mae += mae * target.size(0)
             total += target.size(0)
