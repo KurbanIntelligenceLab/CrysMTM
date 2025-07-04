@@ -13,6 +13,7 @@ from transformers import CLIPProcessor, CLIPModel
 from configs.regression_config import (
     BASE_DIR,
     BATCH_SIZE,
+    EarlyStopping,
     ID_TEMPS,
     LEARNING_RATE,
     MAX_ROTATIONS,
@@ -20,11 +21,14 @@ from configs.regression_config import (
     NUM_WORKERS,
     OOD_TEMPS,
     SEEDS,
+    TARGET_PROPERTIES,
+    TRAIN_TEMPS,
+    NORMALIZE_LABELS,
+    NORMALIZATION_METHOD,
 )
 from dataloaders.regression_dataloader import RegressionLoader
 from models.regression.pure2dopenet_regressor import Pure2DopeNetRegressor, CLIPTextEmbedder
 
-TARGET_NAMES = ["HOMO", "LUMO", "Eg", "Ef", "Et"]
 
 @torch.no_grad()
 def collate_fn_pure2dopenet(batch):
@@ -81,7 +85,7 @@ def train(model, loader, optimizer, epoch, num_epochs, device, target_index):
     avg_loss = running_loss / total
     return avg_loss
 
-def evaluate(model, loader, device, desc, target_index):
+def evaluate(model, loader, device, desc, target_index, normalizer=None):
     model.eval()
     total = 0
     running_loss = 0.0
@@ -99,7 +103,24 @@ def evaluate(model, loader, device, desc, target_index):
                 target = labels.unsqueeze(1).to(device)
             outputs = model(images, text_vectors)
             loss = criterion(outputs, target)
-            mae = torch.mean(torch.abs(outputs - target)).item()
+            
+            # Convert to original scale for MAE calculation if normalizer is used
+            if normalizer is not None:
+                # Convert normalized predictions and targets back to original scale
+                outputs_orig = torch.tensor(
+                    normalizer.inverse_transform(outputs.cpu().numpy()),
+                    dtype=torch.float,
+                    device=device
+                )
+                target_orig = torch.tensor(
+                    normalizer.inverse_transform(target.cpu().numpy()),
+                    dtype=torch.float,
+                    device=device
+                )
+                mae = torch.mean(torch.abs(outputs_orig - target_orig)).item()
+            else:
+                mae = torch.mean(torch.abs(outputs - target)).item()
+            
             running_loss += loss.item() * target.size(0)
             running_mae += mae * target.size(0)
             total += target.size(0)
@@ -112,31 +133,40 @@ def evaluate(model, loader, device, desc, target_index):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    for target_index, target_name in enumerate(TARGET_NAMES):
+    for target_index, target_name in enumerate(TARGET_PROPERTIES):
         print(f"\n=== Running for target {target_name} ===")
         for seed in SEEDS:
             print(f"\n=== Running for seed {seed} ===")
             set_all_seeds(seed)
             out_dir = os.path.join(
-                "results", "regression", f"pure2dopenet_{target_name}", str(seed)
+                "results", "regression", f"pure2dopenet/{target_name}", str(seed)
             )
             os.makedirs(out_dir, exist_ok=True)
 
             # Datasets
             full_train_dataset = RegressionLoader(
                 label_dir=BASE_DIR,
-                temperature_filter=lambda temp: (0 <= temp <= 800)
-                and (temp not in ID_TEMPS),
+                temperature_filter=lambda temp: temp in TRAIN_TEMPS,
                 modalities=["image"],
                 transform=None,
                 max_rotations=MAX_ROTATIONS,
+                normalize_labels=NORMALIZE_LABELS,
+                normalization_method=NORMALIZATION_METHOD,
+                fit_normalizer_on_data=True,  # Fit on training data
             )
+            
+            # Get the fitted normalizer from training dataset
+            normalizer = full_train_dataset.normalizer if NORMALIZE_LABELS else None
+            
             id_dataset = RegressionLoader(
                 label_dir=BASE_DIR,
                 temperature_filter=lambda temp: temp in ID_TEMPS,
                 modalities=["image"],
                 transform=None,
                 max_rotations=MAX_ROTATIONS,
+                normalize_labels=NORMALIZE_LABELS,
+                normalization_method=NORMALIZATION_METHOD,
+                fit_normalizer_on_data=False,
             )
             ood_dataset = RegressionLoader(
                 label_dir=BASE_DIR,
@@ -144,7 +174,15 @@ def main():
                 modalities=["image"],
                 transform=None,
                 max_rotations=MAX_ROTATIONS,
+                normalize_labels=NORMALIZE_LABELS,
+                normalization_method=NORMALIZATION_METHOD,
+                fit_normalizer_on_data=False,
             )
+            
+            # Set the fitted normalizer for ID and OOD datasets
+            if normalizer is not None:
+                id_dataset.set_normalizer(normalizer)
+                ood_dataset.set_normalizer(normalizer)
 
             # NOTE: You must add a 'text_vector' key to each sample in the dataset, e.g. by wrapping the dataset or modifying RegressionLoader.
 
@@ -170,6 +208,7 @@ def main():
             optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
             best_val_mae = float('inf')
             best_model_path = os.path.join(out_dir, "best_model.pth")
+            early_stopping = EarlyStopping()
 
             # Training loop
             for epoch in range(NUM_EPOCHS):
@@ -177,7 +216,7 @@ def main():
                     model, train_loader, optimizer, epoch, NUM_EPOCHS, device, target_index
                 )
                 val_loss, val_mae = evaluate(
-                    model, val_loader, device, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Val]", target_index=target_index
+                    model, val_loader, device, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Val]", target_index=target_index, normalizer=normalizer
                 )
                 print(
                     f"Target {target_name} | Seed {seed} | Epoch {epoch+1}/{NUM_EPOCHS} | Train MSE: {train_loss:.4f} | Val MSE: {val_loss:.4f} | Val MAE: {val_mae:.4f}"
@@ -185,11 +224,16 @@ def main():
                 if val_mae < best_val_mae:
                     best_val_mae = val_mae
                     torch.save(model.state_dict(), best_model_path)
+                
+                # Early stopping check
+                if early_stopping(val_mae):
+                    print(f"Early stopping triggered at epoch {epoch+1}")
+                    break
 
             # Load best model and evaluate on ID/OOD
             model.load_state_dict(torch.load(best_model_path))
-            _, id_mae = evaluate(model, id_loader, device, desc="ID Test", target_index=target_index)
-            _, ood_mae = evaluate(model, ood_loader, device, desc="OOD Test", target_index=target_index)
+            _, id_mae = evaluate(model, id_loader, device, desc="ID Test", target_index=target_index, normalizer=normalizer)
+            _, ood_mae = evaluate(model, ood_loader, device, desc="OOD Test", target_index=target_index, normalizer=normalizer)
             print(
                 f"Target {target_name} | Seed {seed} | ID Test MAE: {id_mae:.4f} | OOD Test MAE: {ood_mae:.4f}"
             )
@@ -198,6 +242,14 @@ def main():
                 f.write(f"Best Val MAE: {best_val_mae:.4f}\n")
                 f.write(f"ID Test MAE: {id_mae:.4f}\n")
                 f.write(f"OOD Test MAE: {ood_mae:.4f}\n")
+            
+            # Save normalizer if used
+            if normalizer is not None:
+                import pickle
+                with open(os.path.join(out_dir, "normalizer.pkl"), "wb") as f:
+                    pickle.dump(normalizer, f)
+                print(f"Normalizer saved to {os.path.join(out_dir, 'normalizer.pkl')}")
+            
             print(f"Results and best model saved in {out_dir}")
 
 if __name__ == "__main__":

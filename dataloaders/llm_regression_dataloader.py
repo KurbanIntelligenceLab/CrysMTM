@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 from typing import Any, Callable, Dict, List, Optional
 
 from torch.utils.data import Dataset
@@ -30,21 +31,43 @@ class LLMLoader(Dataset):
     def _load_label_data(self) -> Dict[str, Dict[int, Dict[str, float]]]:
         phases = ["anatase", "brookite", "rutile"]
         label_data = {phase: {} for phase in phases}
-        label_names = ["HOMO", "LUMO", "Eg", "Ef", "Et"]
-        for phase in phases:
-            label_file = os.path.join(self.label_dir, f"{phase}_labels.txt")
-            if not os.path.exists(label_file):
-                continue
-            with open(label_file, "r") as f:
-                lines = f.readlines()
-            for line in lines:
-                if line.strip().startswith("#") or line.strip() == "" or line.strip().startswith("Temp"):
-                    continue
-                parts = line.split()
-                if len(parts) < 6:
-                    continue
-                temp = int(parts[0].replace("K", "")) if "K" in parts[0] else int(float(parts[0]))
-                label_data[phase][temp] = {name: float(parts[i+1]) for i, name in enumerate(label_names)}
+        
+        # Load data from the CSV file we generated
+        csv_file = os.path.join(self.label_dir, "labels.csv")
+        if not os.path.exists(csv_file):
+            raise FileNotFoundError(f"CSV file not found: {csv_file}")
+        
+        # Read the CSV file
+        df = pd.read_csv(csv_file)
+        
+        # Process each row
+        for _, row in df.iterrows():
+            polymorph = row['Polymorph'].lower()  # Convert to lowercase to match phases
+            temp_str = row['Temperature']
+            temp = int(temp_str.replace('K', '')) if 'K' in temp_str else int(float(temp_str))
+            parameter = row['Parameter']
+            value = float(row['Value'])
+            
+            # Initialize temperature dict if not exists
+            if temp not in label_data[polymorph]:
+                label_data[polymorph][temp] = {}
+            
+            # Map parameter names to match our expected format
+            param_mapping = {
+                'HOMO': 'HOMO',
+                'LUMO': 'LUMO', 
+                'Eg': 'Eg',
+                'Ef': 'Ef',
+                'Et': 'Et',
+                'Eta': 'Eta',
+                'disp': 'disp',
+                'vol': 'vol', 
+                'bond': 'bond'
+            }
+            
+            if parameter in param_mapping:
+                label_data[polymorph][temp][param_mapping[parameter]] = value
+        
         return label_data
 
     def _get_available_rotations(self, temp_dir: str) -> Dict[str, List[int]]:
@@ -148,9 +171,16 @@ class LLMLoader(Dataset):
         temp = entry["temperature"]
         phase = entry["phase"]
         label_dict = self.label_data[phase][temp]
+        
+        # Add all 9 targets from our CSV
         result["HOMO"] = label_dict["HOMO"]
         result["LUMO"] = label_dict["LUMO"]
         result["Eg"] = label_dict["Eg"]
         result["Ef"] = label_dict["Ef"]
         result["Et"] = label_dict["Et"]
+        result["Eta"] = label_dict["Eta"]
+        result["disp"] = label_dict["disp"]
+        result["vol"] = label_dict["vol"]
+        result["bond"] = label_dict["bond"]
+        
         return result 

@@ -1,4 +1,4 @@
-BASE_DIR = "data_revised"
+BASE_DIR = "CrysMTM"
 MAX_ROTATIONS = None
 
 ID_TEMPS = [250, 450, 650, 750, 800]
@@ -8,3 +8,4 @@ NUM_WORKERS = 0
 NUM_EPOCHS = 150
 LEARNING_RATE = 1e-3
 SEEDS = [10, 20, 30]
+TARGET_PROPERTIES = ["HOMO", "LUMO", "Eg", "Ef", "Et", "Eta", "disp", "vol", "bond"]

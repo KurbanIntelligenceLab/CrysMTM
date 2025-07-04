@@ -1,6 +1,4 @@
 import os
-from dotenv import load_dotenv
-load_dotenv()
 import json
 import requests
 import time
@@ -11,43 +9,13 @@ from PIL import Image
 from io import BytesIO
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from configs.llm_config import *
 
 # ========== CONFIG ==========
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-TEMPERATURE = 0.2
-MAX_TOKENS = 1000
-
-# Model lists
-multimodal_models = {
-    "mistralai/mistral-medium-3",
-    "x-ai/grok-2-vision-1212",
-    "meta-llama/llama-4-maverick",
-    "openai/gpt-4.1-mini",
-    "google/gemini-2.5-flash-preview-05-20",
-    "anthropic/claude-opus-4",
-    "anthropic/claude-sonnet-4",
-}
-models_to_test = [
-    {'name': "deepseek/deepseek-chat", 'use_openrouter': True},
-    {'name': "x-ai/grok-2-vision-1212", 'use_openrouter': True},
-    {'name': "x-ai/grok-2-1212", 'use_openrouter': True},
-    {'name': "meta-llama/llama-4-maverick", 'use_openrouter': True},
-    {'name': "mistralai/mistral-medium-3", 'use_openrouter': True},
-    {'name': "openai/gpt-4.1-mini", 'use_openrouter': True},
-    {'name': "google/gemini-2.5-flash-preview-05-20", 'use_openrouter': True},
-    {'name': "anthropic/claude-opus-4", 'use_openrouter': True},
-    {'name': "anthropic/claude-sonnet-4", 'use_openrouter': True}
-]
-
-ID_TEMPS = [200, 400, 600]
-OOD_TEMPS = [0, 50, 150, 900, 950, 1000]
-ALL_TEMPS = set(range(0, 1001, 50))
-OOD_PREV_TEMPS = sorted(list(set(range(150, 851, 50)) - set(ID_TEMPS)))
-ID_SAMPLES_PER_TEMP = 1
-OOD_SAMPLES_PER_TEMP = 1
+# All configuration is now imported from configs.llm_config
 
 # ========== LLM CALL ==========
-def call_openrouter_llm(messages, model, max_retries=3):
+def call_openrouter_llm(messages, model, max_retries=MAX_RETRIES):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
@@ -64,7 +32,7 @@ def call_openrouter_llm(messages, model, max_retries=3):
                 url="https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=60
+                timeout=TIMEOUT
             )
             response.raise_for_status()
             response_json = response.json()
@@ -79,25 +47,23 @@ def call_openrouter_llm(messages, model, max_retries=3):
 
 # ========== PROMPT GENERATION ==========
 def build_property_prediction_prompt(text, image_path, curr_temp, prev_temp, prev_props, model_name):
+    target_props_str = ", ".join(TARGET_PROPERTIES)
     system_content = (
         "You are a materials science expert. "
         "Given a nanoparticle's summary, the current temperature, and property values at a different temperature, "
-        "predict the following properties: HOMO, LUMO, Eg, Ef, Et (in eV). "
-        "Return your answer as a Python dict with keys: HOMO, LUMO, Eg, Ef, Et. "
+        f"predict the following properties: {target_props_str} (in eV). "
+        f"Return your answer as a Python dict with keys: {target_props_str}. "
         "Do not include any explanation or extra text."
     )
-    prev_str = (
-        f"At {prev_temp} K, the properties were: "
-        f"HOMO: {prev_props['HOMO']}, LUMO: {prev_props['LUMO']}, "
-        f"Eg: {prev_props['Eg']}, Ef: {prev_props['Ef']}, Et: {prev_props['Et']}."
-    )
+    prev_props_str = ", ".join([f"{k}: {prev_props[k]}" for k in TARGET_PROPERTIES])
+    prev_str = f"At {prev_temp} K, the properties were: {prev_props_str}."
     user_text = (
         f"Current temperature: {curr_temp} K\n"
         f"Summary:\n{text}\n\n"
         f"{prev_str}\n"
         "Predict the properties and return as a Python dict."
     )
-    if model_name in multimodal_models:
+    if model_name in MULTIMODAL_MODELS:
         with Image.open(image_path) as img:
             buffered = BytesIO()
             img.save(buffered, format="PNG")
@@ -121,13 +87,12 @@ def extract_properties_from_llm_output(output):
     """
     try:
         props = eval(output, {"__builtins__": {}})
-        return {k: float(props[k]) for k in ['HOMO', 'LUMO', 'Eg', 'Ef', 'Et']}
+        return {k: float(props[k]) for k in TARGET_PROPERTIES}
     except Exception:
         # Fallback: try to parse numbers from text
         import re
-        keys = ['HOMO', 'LUMO', 'Eg', 'Ef', 'Et']
         props = {}
-        for k in keys:
+        for k in TARGET_PROPERTIES:
             match = re.search(rf"{k}\s*[:=]\s*([-+]?\d*\.?\d+)", output)
             if match:
                 props[k] = float(match.group(1))
@@ -140,7 +105,7 @@ def compute_error(pred, true):
 
 # ========== MAIN ==========
 def process_sample(sample, model_name, temp_set, phase, temp, sample_lookup, ood_prev_lookup):
-    gt = {k: sample[k] for k in ['HOMO', 'LUMO', 'Eg', 'Ef', 'Et']}
+    gt = {k: sample[k] for k in TARGET_PROPERTIES}
     curr_temp = sample['temperature']
     rotation = sample['rotation']
     if temp_set == 'ID':
@@ -170,7 +135,7 @@ def process_sample(sample, model_name, temp_set, phase, temp, sample_lookup, ood
         llm_output = call_openrouter_llm(messages, model=model_name)
         print(f"Model: {model_name} | Phase: {phase} | Temp: {temp} | Rot: {rotation} | Output: {llm_output}")
         # Try to parse output, set missing values to None
-        parsed = {'HOMO': None, 'LUMO': None, 'Eg': None, 'Ef': None, 'Et': None}
+        parsed = {k: None for k in TARGET_PROPERTIES}
         if llm_output:
             import re
             import ast
@@ -205,7 +170,7 @@ def process_sample(sample, model_name, temp_set, phase, temp, sample_lookup, ood
     except Exception as e:
         print(f"Error for sample {sample.get('image_path', '')}: {e}")
         llm_output = None
-        parsed = {'HOMO': None, 'LUMO': None, 'Eg': None, 'Ef': None, 'Et': None}
+        parsed = {k: None for k in TARGET_PROPERTIES}
         result = {
             'phase': phase,
             'temperature': temp,
@@ -219,14 +184,15 @@ def process_sample(sample, model_name, temp_set, phase, temp, sample_lookup, ood
 
 def main():
     dataset = LLMLoader(
-        label_dir="data_revised",
-        modalities=["text", "image"]
+        label_dir=BASE_DIR,
+        modalities=MODALITIES,
+        max_rotations=MAX_ROTATIONS
     )
     # Build a lookup for (phase, temperature, rotation) -> properties
     sample_lookup = {}
     for sample in dataset:
         key = (sample['phase'], sample['temperature'], sample['rotation'])
-        sample_lookup[key] = {k: sample[k] for k in ['HOMO', 'LUMO', 'Eg', 'Ef', 'Et']}
+        sample_lookup[key] = {k: sample[k] for k in TARGET_PROPERTIES}
     # Group by phase and temperature
     phase_temp_samples = {}
     for idx, sample in enumerate(dataset):
@@ -236,8 +202,8 @@ def main():
     for sample in dataset:
         if sample['temperature'] in OOD_PREV_TEMPS:
             key = (sample['phase'], sample['temperature'], sample['rotation'])
-            ood_prev_lookup[key] = {k: sample[k] for k in ['HOMO', 'LUMO', 'Eg', 'Ef', 'Et']}
-    for model_cfg in tqdm(models_to_test, desc="Models"):
+            ood_prev_lookup[key] = {k: sample[k] for k in TARGET_PROPERTIES}
+    for model_cfg in tqdm(MODELS_TO_TEST, desc="Models"):
         model_name = model_cfg['name']
         model_results = []
         for temp_set, temps, n_samples in [('ID', ID_TEMPS, ID_SAMPLES_PER_TEMP), ('OOD', OOD_TEMPS, OOD_SAMPLES_PER_TEMP)]:
@@ -248,7 +214,7 @@ def main():
                     if not samples:
                         continue
                     chosen = random.sample(samples, min(n_samples, len(samples)))
-                    with ThreadPoolExecutor(max_workers=4) as executor:
+                    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                         futures = [
                             executor.submit(process_sample, sample, model_name, temp_set, phase, temp, sample_lookup, ood_prev_lookup)
                             for idx, sample in chosen
@@ -257,9 +223,9 @@ def main():
                             result = future.result()
                             if result is not None:
                                 # Calculate error for this sample
-                                gt = {k: sample[k] for k in ['HOMO', 'LUMO', 'Eg', 'Ef', 'Et']}
+                                gt = {k: sample[k] for k in TARGET_PROPERTIES}
                                 error = {}
-                                for k in ['HOMO', 'LUMO', 'Eg', 'Ef', 'Et']:
+                                for k in TARGET_PROPERTIES:
                                     try:
                                         if result['parsed'][k] is not None and gt[k] is not None:
                                             error[k] = abs(result['parsed'][k] - gt[k])
@@ -272,7 +238,7 @@ def main():
                                 model_results.append(result)
         # Compute MAE for this model
         mae = {}
-        for k in ['HOMO', 'LUMO', 'Eg', 'Ef', 'Et']:
+        for k in TARGET_PROPERTIES:
             vals = [r['error'][k] for r in model_results if r['error'][k] is not None]
             mae[k] = sum(vals) / len(vals) if vals else None
         # Save as a dict with results and mae
