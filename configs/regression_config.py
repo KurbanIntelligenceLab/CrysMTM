@@ -3,9 +3,9 @@ MAX_ROTATIONS = None
 
 # Temperature splits
 TRAIN_RANGE = range(0, 851, 50)
-TRAIN_TEMPS = [T for T in TRAIN_RANGE if T not in [250, 450, 650, 750, 800, 0, 50, 100, 900, 950, 1000]]
-ID_TEMPS = [T for T in TRAIN_RANGE if T in [250, 450, 650, 750, 800]]
-OOD_TEMPS = [T for T in TRAIN_RANGE if T in [0, 50, 100, 900, 950, 1000]]
+TRAIN_TEMPS = [T for T in TRAIN_RANGE if T not in [250, 450, 650, 750, 800]]
+ID_TEMPS = [250, 450, 650, 750, 800]
+OOD_TEMPS = [0, 50, 100, 900, 950, 1000]
 
 # Training parameters
 BATCH_SIZE = 32

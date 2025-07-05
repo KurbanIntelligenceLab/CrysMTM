@@ -358,4 +358,10 @@ class RegressionLoader(Dataset):
             )
         
         result["regression_label"] = regression_label
+        
+        # Add metadata for evaluation scripts
+        result["temperature"] = entry["temperature"]
+        result["phase"] = entry["phase"]
+        result["rotation"] = entry["rotation"]
+        
         return result 
