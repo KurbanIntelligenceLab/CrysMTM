@@ -13,10 +13,10 @@ from models.regression.visnet_regressor import ViSNetRegressor
 TEST_TEMPS = ID_TEMPS + OOD_TEMPS
 def load_visnet_model(target_name, seed, device):
     """Load trained ViSNet model."""
-    model_path = os.path.join("results", f"visnet/{target_name}", str(seed), "best_model.pth")
+    model_path = os.path.join("results", f"regression/visnet/{target_name}", str(seed), "best_model.pth")
     
     # Load normalizer if available
-    normalizer_path = os.path.join("results", f"visnet/{target_name}", str(seed), "normalizer.pkl")
+    normalizer_path = os.path.join("results", f"regression/visnet/{target_name}", str(seed), "normalizer.pkl")
     normalizer = None
     if os.path.exists(normalizer_path):
         with open(normalizer_path, 'rb') as f:
@@ -154,7 +154,7 @@ def main():
     for target_name in TARGET_PROPERTIES:
         for seed in SEEDS:
             try:
-                model_path = os.path.join("results", f"visnet/{target_name}", str(seed), "best_model.pth")
+                model_path = os.path.join("results", f"regression/visnet/{target_name}", str(seed), "best_model.pth")
                 if not os.path.exists(model_path):
                     print(f"Model not found: {model_path}")
                     continue
@@ -195,10 +195,10 @@ def main():
                 
                 df.to_csv(combined_path, mode='a', header=first_write, index=False)
                 first_write = False
-                print(f"Saved results for visnet/{target_name}/{seed} to {combined_path}")
+                print(f"Saved results for regression/visnet/{target_name}/{seed} to {combined_path}")
                 
             except Exception as e:
-                print(f"Error evaluating visnet/{target_name}/{seed}: {e}")
+                print(f"Error evaluating regression/visnet/{target_name}/{seed}: {e}")
                 continue
     
     print(f"All ViSNet results saved to {combined_path}")

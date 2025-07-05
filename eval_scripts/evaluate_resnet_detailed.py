@@ -14,10 +14,10 @@ from models.regression.resnet_regressor import DEFAULT_IMAGE_SIZE, DEFAULT_MODEL
 TEST_TEMPS = ID_TEMPS + OOD_TEMPS
 def load_resnet_model(target_name, seed, device):
     """Load trained ResNet model."""
-    model_path = os.path.join("results", f"resnet/{target_name}", str(seed), "best_model.pth")
+    model_path = os.path.join("results", f"regression/resnet/{target_name}", str(seed), "best_model.pth")
     
     # Load normalizer if available
-    normalizer_path = os.path.join("results", f"resnet/{target_name}", str(seed), "normalizer.pkl")
+    normalizer_path = os.path.join("results", f"regression/resnet/{target_name}", str(seed), "normalizer.pkl")
     normalizer = None
     if os.path.exists(normalizer_path):
         with open(normalizer_path, 'rb') as f:
@@ -137,7 +137,7 @@ def main():
     for target_name in TARGET_PROPERTIES:
         for seed in SEEDS:
             try:
-                model_path = os.path.join("results", f"resnet/{target_name}", str(seed), "best_model.pth")
+                model_path = os.path.join("results", f"regression/resnet/{target_name}", str(seed), "best_model.pth")
                 if not os.path.exists(model_path):
                     print(f"Model not found: {model_path}")
                     continue
@@ -179,10 +179,10 @@ def main():
                 
                 df.to_csv(combined_path, mode='a', header=first_write, index=False)
                 first_write = False
-                print(f"Saved results for resnet/{target_name}/{seed} to {combined_path}")
+                print(f"Saved results for regression/resnet/{target_name}/{seed} to {combined_path}")
                 
             except Exception as e:
-                print(f"Error evaluating resnet/{target_name}/{seed}: {e}")
+                print(f"Error evaluating regression/resnet/{target_name}/{seed}: {e}")
                 continue
     
     print(f"All ResNet results saved to {combined_path}")
