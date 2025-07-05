@@ -3,7 +3,7 @@ import torch.nn as nn
 from transformers import CLIPProcessor, CLIPModel
 
 class Pure2DopeNetRegressor(nn.Module):
-    def __init__(self, input_channels=3, text_embedding_dim=512, feature_dim=16):
+    def __init__(self, input_channels=3, text_embedding_dim=512, feature_dim=64):
         super(Pure2DopeNetRegressor, self).__init__()
 
         # Convolutional Layers
