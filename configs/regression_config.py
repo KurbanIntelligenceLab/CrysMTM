@@ -10,7 +10,7 @@ OOD_TEMPS = [T for T in TRAIN_RANGE if T in [0, 50, 100, 900, 950, 1000]]
 # Training parameters
 BATCH_SIZE = 32
 NUM_WORKERS = 0
-NUM_EPOCHS = 5
+NUM_EPOCHS = 150
 LEARNING_RATE = 1e-3
 SEEDS = [10, 20, 30]
 TARGET_PROPERTIES = ["HOMO", "LUMO", "Eg", "Ef", "Et", "Eta", "disp", "vol", "bond"]
