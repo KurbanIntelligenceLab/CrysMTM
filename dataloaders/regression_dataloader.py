@@ -272,7 +272,7 @@ class RegressionLoader(Dataset):
         if self.as_pyg_data and set(self.modalities) == {"xyz", "element"}:
             if PyGData is None:
                 raise ImportError("torch_geometric is required for as_pyg_data=True")
-            with open(entry["xyz_path"], "r") as f:
+            with open(entry["xyz_path"], "r", encoding="utf-8") as f:
                 xyz_lines = f.readlines()[2:]
             element_symbols = []
             xyz_coords = []
@@ -316,7 +316,7 @@ class RegressionLoader(Dataset):
                 image = self.transform(image)
             result["image"] = image
         if "xyz" in self.modalities or "element" in self.modalities:
-            with open(entry["xyz_path"], "r") as f:
+            with open(entry["xyz_path"], "r", encoding="utf-8") as f:
                 xyz_lines = f.readlines()[2:]
             element_symbols = []
             xyz_coords = []
@@ -333,7 +333,7 @@ class RegressionLoader(Dataset):
             if "element" in self.modalities:
                 result["element"] = element_symbols
         if "text" in self.modalities:
-            with open(entry["text_path"], "r") as f:
+            with open(entry["text_path"], "r", encoding="utf-8") as f:
                 text_data = f.read()
             result["text"] = text_data
         temp = entry["temperature"]
