@@ -185,10 +185,10 @@ def main():
                 
                 df = pd.DataFrame({
                     'model': 'visnet',
-                    'target': target_name,
+                    'property': target_name,
                     'seed': seed,
                     'prediction': predictions,
-                    'target': targets,
+                    'actual': targets,
                     'temperature': [m.get('temperature') for m in metadata],
                     'composition': [m.get('composition') for m in metadata]
                 })
