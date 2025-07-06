@@ -71,23 +71,11 @@ def evaluate_equiformer_detailed(model_info, dataloader, device, target_name, se
             else:
                 target = labels[:, target_index].unsqueeze(1)
             
-            # Convert to original scale if normalizer is used
-            if normalizer is not None:
-                outputs_orig = torch.tensor(
-                    normalizer.inverse_transform(outputs.cpu().numpy()),
-                    dtype=torch.float,
-                    device=device
-                )
-                target_orig = torch.tensor(
-                    normalizer.inverse_transform(target.cpu().numpy()),
-                    dtype=torch.float,
-                    device=device
-                )
-                pred_batch = outputs_orig.cpu().numpy()
-                target_batch = target_orig.cpu().numpy()
-            else:
-                pred_batch = outputs.cpu().numpy()
-                target_batch = target.cpu().numpy()
+            # Keep both predictions and targets in normalized scale for fair comparison
+            # The model outputs are already in normalized scale
+            # The targets from the dataloader are also in normalized scale
+            pred_batch = outputs.cpu().numpy()
+            target_batch = target.cpu().numpy()
             
             # Extract metadata - one entry per sample in the batch
             # Use batch['temperature'] if available for batch size

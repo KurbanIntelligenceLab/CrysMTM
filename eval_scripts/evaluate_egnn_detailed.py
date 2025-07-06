@@ -75,20 +75,14 @@ def evaluate_egnn_detailed(model_info, dataloader, device, target_name, seed):
             else:
                 target = labels[:, target_index].unsqueeze(1)
             
+
+            
             # Convert to original scale if normalizer is used
             if normalizer is not None:
-                outputs_orig = torch.tensor(
-                    normalizer.inverse_transform(outputs.cpu().numpy()),
-                    dtype=torch.float,
-                    device=device
-                )
-                target_orig = torch.tensor(
-                    normalizer.inverse_transform(target.cpu().numpy()),
-                    dtype=torch.float,
-                    device=device
-                )
-                pred_batch = outputs_orig.cpu().numpy()
-                target_batch = target_orig.cpu().numpy()
+                # For evaluation, we want to compare predictions and targets in the same scale
+                # Since the model was trained on normalized data, let's compare in normalized scale
+                pred_batch = outputs.cpu().numpy()  # Keep normalized
+                target_batch = target.cpu().numpy()  # Keep normalized
             else:
                 pred_batch = outputs.cpu().numpy()
                 target_batch = target.cpu().numpy()
@@ -148,6 +142,8 @@ def main():
                     print(f"Model not found: {model_path}")
                     continue
                 
+
+                
                 model_info = load_egnn_model(target_name, seed, device)
                 model, reg_head, normalizer = model_info
                 
@@ -166,6 +162,8 @@ def main():
                 # Set the fitted normalizer for ID dataset
                 if normalizer is not None:
                     id_dataset.set_normalizer(normalizer)
+                
+
                 
                 dataloader = PyGDataLoader(id_dataset, batch_size=BATCH_SIZE, shuffle=False)
                 

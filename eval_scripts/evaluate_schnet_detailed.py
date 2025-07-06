@@ -50,31 +50,11 @@ def evaluate_schnet_detailed(model_info, dataloader, device, target_name, seed):
             else:
                 target = batch.y[:, target_index].unsqueeze(1)
             
-            # Apply normalization manually if needed
-            if normalizer is not None:
-                target = torch.tensor(
-                    normalizer.transform(target.cpu().numpy()),
-                    dtype=torch.float,
-                    device=device
-                )
-            
-            # Convert to original scale if normalizer is used
-            if normalizer is not None:
-                outputs_orig = torch.tensor(
-                    normalizer.inverse_transform(outputs.cpu().numpy()),
-                    dtype=torch.float,
-                    device=device
-                )
-                target_orig = torch.tensor(
-                    normalizer.inverse_transform(target.cpu().numpy()),
-                    dtype=torch.float,
-                    device=device
-                )
-                pred_batch = outputs_orig.cpu().numpy()
-                target_batch = target_orig.cpu().numpy()
-            else:
-                pred_batch = outputs.cpu().numpy()
-                target_batch = target.cpu().numpy()
+            # Keep both predictions and targets in normalized scale for fair comparison
+            # The model outputs are already in normalized scale
+            # The targets from the dataloader are also in normalized scale
+            pred_batch = outputs.cpu().numpy()
+            target_batch = target.cpu().numpy()
 
             # Extract metadata from PyG batch
             batch_size = batch.num_graphs

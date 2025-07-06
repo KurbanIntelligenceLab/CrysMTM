@@ -10,71 +10,21 @@ TARGET_PROPERTIES = ["HOMO", "LUMO", "Eg", "Ef", "Et", "Eta", "disp", "vol", "bo
 SEEDS = [10, 20, 30]
 
 def load_and_fix_csv(file_path):
-    """Load CSV file and handle the column structure issue."""
+    """Load CSV file with the corrected structure."""
     try:
         df = pd.read_csv(file_path)
         
-        # The CSV has the structure: model, target, seed, prediction, temperature, composition
-        # where 'target' contains the actual target values (not property names)
-        # The property names were lost due to duplicate column names in the evaluation script
+        # The CSV now has the correct structure: model, property, seed, prediction, actual, temperature, composition
+        # where 'property' contains the property names and 'actual' contains the target values
         
-        # Extract model name from file path
-        model_name = os.path.basename(file_path).replace('_predictions.csv', '')
+        # Ensure we have the expected columns
+        expected_cols = ['model', 'property', 'seed', 'prediction', 'actual', 'temperature', 'composition']
+        if not all(col in df.columns for col in expected_cols):
+            print(f"Warning: Missing expected columns in {file_path}")
+            print(f"Available columns: {list(df.columns)}")
+            return None
         
-        # Rename the target column to actual
-        if 'target' in df.columns:
-            df = df.rename(columns={'target': 'actual'})
-        
-        # Add model column if not present
-        if 'model' not in df.columns:
-            df['model'] = model_name
-        
-        # Since the evaluation script loops through TARGET_PROPERTIES and SEEDS,
-        # and appends results for each combination, we can infer the property names
-        # by grouping the data appropriately
-        
-        # The data is organized as:
-        # - First N rows: HOMO for seed 10
-        # - Next N rows: HOMO for seed 20
-        # - Next N rows: HOMO for seed 30
-        # - Next N rows: LUMO for seed 10
-        # - Next N rows: LUMO for seed 20
-        # - Next N rows: LUMO for seed 30
-        # - And so on for all properties...
-        
-        # Calculate samples per property per seed
-        unique_seeds = sorted(df['seed'].unique())
-        if unique_seeds:
-            samples_per_seed = len(df[df['seed'] == unique_seeds[0]])
-            samples_per_property_per_seed = samples_per_seed // len(unique_seeds)
-            
-            print(f"Detected {samples_per_seed} samples per seed, {samples_per_property_per_seed} samples per property per seed")
-            
-            # Split the data into property groups
-            property_groups = []
-            
-            for i, prop in enumerate(TARGET_PROPERTIES):
-                # For each property, get all samples across all seeds
-                start_idx = i * len(unique_seeds) * samples_per_property_per_seed
-                end_idx = (i + 1) * len(unique_seeds) * samples_per_property_per_seed
-                
-                if end_idx <= len(df):
-                    prop_data = df.iloc[start_idx:end_idx].copy()
-                    prop_data['property'] = prop
-                    property_groups.append(prop_data)
-                else:
-                    # Handle the case where we don't have complete data for all properties
-                    print(f"Warning: Incomplete data for property {prop}")
-                    break
-            
-            if property_groups:
-                df = pd.concat(property_groups, ignore_index=True)
-            else:
-                # Fallback: assign 'unknown' to all
-                df['property'] = 'unknown'
-        else:
-            df['property'] = 'unknown'
-        
+        print(f"Successfully loaded {file_path} with {len(df)} samples")
         return df
             
     except Exception as e:
