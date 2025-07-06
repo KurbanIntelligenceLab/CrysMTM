@@ -7,6 +7,34 @@ from pathlib import Path
 ID_TEMPS = [250, 450, 650, 750, 800]
 OOD_TEMPS = [0, 50, 100, 900, 950, 1000]
 TARGET_PROPERTIES = ["HOMO", "LUMO", "Eg", "Ef", "Et", "Eta", "disp", "vol", "bond"]
+
+# Property name mappings for LaTeX
+PROPERTY_LATEX = {
+    "HOMO": "$E_H$",
+    "LUMO": "$E_L$", 
+    "Eg": "$E_g$",
+    "Ef": "$E_f$",
+    "Et": "$E_T$",
+    "Eta": "$E_{Ta}$",
+    "disp": "$\\Delta r_{max}$",
+    "vol": "$\\Delta V$",
+    "bond": "$\\Delta d_{Ti-O}$"
+}
+
+# Model name mappings for better display
+MODEL_NAMES = {
+    "egnn": "EGNN",
+    "schnet": "SchNet", 
+    "pure2dopenet": "Pure2DopeNet",
+    "equiformer": "Equiformer",
+    "faenet": "FAENet",
+    "clip": "CLIP",
+    "resnet": "ResNet",
+    "vit": "ViT",
+    "visnet": "ViSNet",
+    "gotennet": "GotenNet"
+}
+
 SEEDS = [10, 20, 30]
 
 def load_and_fix_csv(file_path):
@@ -103,17 +131,112 @@ def analyze_model_results(model_name, results_dir):
                 'OOD': ood_mape
             }
         
-        # Average over seeds
+        # Average and std over seeds
         if seed_results:
-            avg_id_mape = np.nanmean([result['ID'] for result in seed_results.values()])
-            avg_ood_mape = np.nanmean([result['OOD'] for result in seed_results.values()])
+            id_values = [result['ID'] for result in seed_results.values() if not np.isnan(result['ID'])]
+            ood_values = [result['OOD'] for result in seed_results.values() if not np.isnan(result['OOD'])]
+            
+            avg_id_mape = np.nanmean(id_values) if id_values else np.nan
+            avg_ood_mape = np.nanmean(ood_values) if ood_values else np.nan
+            std_id_mape = np.nanstd(id_values) if len(id_values) > 1 else 0.0
+            std_ood_mape = np.nanstd(ood_values) if len(ood_values) > 1 else 0.0
             
             results[property_name] = {
                 'ID': avg_id_mape,
-                'OOD': avg_ood_mape
+                'OOD': avg_ood_mape,
+                'ID_std': std_id_mape,
+                'OOD_std': std_ood_mape
             }
     
     return results
+
+def print_latex_table(all_results):
+    """Print results as a LaTeX table."""
+    print("\\begin{table}[htbp]")
+    print("\\centering")
+    print("\\resizebox{\\textwidth}{!}{")
+    print("\\begin{tabular}{l" + "cc" * len(TARGET_PROPERTIES) + "}")
+    print("\\toprule")
+    
+    # Header row 1: Property names
+    header1 = "\\multirow{2}{*}{Model}"
+    for prop in TARGET_PROPERTIES:
+        header1 += f" & \\multicolumn{{2}}{{c}}{{{PROPERTY_LATEX[prop]}}}"
+    header1 += " \\\\"
+    print(header1)
+    
+    # Header row 2: ID/OOD
+    header2 = ""
+    for prop in TARGET_PROPERTIES:
+        header2 += " & ID & OOD"
+    header2 += " \\\\"
+    print(header2)
+    
+    print("\\midrule")
+    
+    # Find best and second best for each property/type
+    best_scores = {}
+    for prop in TARGET_PROPERTIES:
+        best_scores[prop] = {'ID': [], 'OOD': []}
+        for model_name in all_results:
+            if prop in all_results[model_name]:
+                id_val = all_results[model_name][prop]['ID']
+                ood_val = all_results[model_name][prop]['OOD']
+                if not np.isnan(id_val):
+                    best_scores[prop]['ID'].append((id_val, model_name))
+                if not np.isnan(ood_val):
+                    best_scores[prop]['OOD'].append((ood_val, model_name))
+        
+        # Sort and get best/second best
+        best_scores[prop]['ID'].sort(key=lambda x: x[0])
+        best_scores[prop]['OOD'].sort(key=lambda x: x[0])
+    
+    # Data rows
+    for model_name in sorted(all_results.keys()):
+        display_name = MODEL_NAMES.get(model_name, model_name)
+        row = f"{display_name}"
+        
+        for prop in TARGET_PROPERTIES:
+            if prop in all_results[model_name]:
+                id_val = all_results[model_name][prop]['ID']
+                ood_val = all_results[model_name][prop]['OOD']
+                id_std = all_results[model_name][prop]['ID_std']
+                ood_std = all_results[model_name][prop]['OOD_std']
+                
+                # Format values with 2 decimal places and std
+                if not np.isnan(id_val):
+                    id_str = f"{id_val:.2f}±{id_std:.2f}"
+                    # Check if best or second best
+                    if best_scores[prop]['ID'] and best_scores[prop]['ID'][0][1] == model_name:
+                        id_str = f"\\textbf{{{id_str}}}"
+                    elif len(best_scores[prop]['ID']) > 1 and best_scores[prop]['ID'][1][1] == model_name:
+                        id_str = f"\\underline{{{id_str}}}"
+                else:
+                    id_str = "---"
+                
+                if not np.isnan(ood_val):
+                    ood_str = f"{ood_val:.2f}±{ood_std:.2f}"
+                    # Check if best or second best
+                    if best_scores[prop]['OOD'] and best_scores[prop]['OOD'][0][1] == model_name:
+                        ood_str = f"\\textbf{{{ood_str}}}"
+                    elif len(best_scores[prop]['OOD']) > 1 and best_scores[prop]['OOD'][1][1] == model_name:
+                        ood_str = f"\\underline{{{ood_str}}}"
+                else:
+                    ood_str = "---"
+                
+                row += f" & {id_str} & {ood_str}"
+            else:
+                row += " & --- & ---"
+        
+        row += " \\\\"
+        print(row)
+    
+    print("\\bottomrule")
+    print("\\end{tabular}")
+    print("}")
+    print("\\caption{Performance comparison of different deep learning models on material property prediction tasks. Results show Mean Absolute Percentage Error (MAPE) averaged over 3 independent runs with different random seeds. Values represent mean ± standard deviation. MAPE is used to ensure fair comparison across properties with different scales and units. Best performing model for each property and evaluation setting is highlighted in \\textbf{bold}, while second best is \\underline{underlined}. Lower values indicate better prediction accuracy.}")
+    print("\\label{tab:model_comparison}")
+    print("\\end{table}")
 
 def main():
     results_dir = "results/detailed_analysis"
@@ -132,62 +255,15 @@ def main():
         if results:
             all_results[model_name] = results
     
-    # Create summary DataFrame
+    # Print LaTeX table
     if not all_results:
         print("No results to analyze!")
         return
     
-    # Create a multi-level column DataFrame
-    columns = []
-    for prop in TARGET_PROPERTIES:
-        columns.extend([(prop, 'ID'), (prop, 'OOD')])
-    
-    summary_data = []
-    for model_name in all_results:
-        row_data = []
-        for prop in TARGET_PROPERTIES:
-            if prop in all_results[model_name]:
-                row_data.extend([
-                    all_results[model_name][prop]['ID'],
-                    all_results[model_name][prop]['OOD']
-                ])
-            else:
-                row_data.extend([np.nan, np.nan])
-        summary_data.append(row_data)
-    
-    # Create DataFrame with multi-level columns
-    summary_df = pd.DataFrame(summary_data, index=all_results.keys(), columns=pd.MultiIndex.from_tuples(columns))
-    
-    # Save results
-    output_path = os.path.join(results_dir, "model_comparison_mape.csv")
-    summary_df.to_csv(output_path)
-    
-    print(f"\nResults saved to: {output_path}")
-    print("\nSummary:")
-    print(summary_df.round(2))
-    
-    # Also create a simplified version with just the mean across all properties
-    simplified_data = []
-    for model_name in all_results:
-        id_mape_values = [all_results[model_name][prop]['ID'] for prop in TARGET_PROPERTIES if prop in all_results[model_name]]
-        ood_mape_values = [all_results[model_name][prop]['OOD'] for prop in TARGET_PROPERTIES if prop in all_results[model_name]]
-        
-        avg_id = np.nanmean(id_mape_values) if id_mape_values else np.nan
-        avg_ood = np.nanmean(ood_mape_values) if ood_mape_values else np.nan
-        
-        simplified_data.append({
-            'Model': model_name,
-            'Avg_ID_MAPE': avg_id,
-            'Avg_OOD_MAPE': avg_ood
-        })
-    
-    simplified_df = pd.DataFrame(simplified_data)
-    simplified_path = os.path.join(results_dir, "model_comparison_simplified.csv")
-    simplified_df.to_csv(simplified_path, index=False)
-    
-    print(f"\nSimplified results saved to: {simplified_path}")
-    print("\nSimplified Summary (Average across all properties):")
-    print(simplified_df.round(2))
+    print("\n" + "="*80)
+    print("LATEX TABLE")
+    print("="*80)
+    print_latex_table(all_results)
 
 if __name__ == "__main__":
     main() 

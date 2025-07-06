@@ -85,7 +85,7 @@ def evaluate_clip_detailed(model_info, dataloader, device, target_name, seed):
             
             # Keep both predictions and targets in normalized scale for fair comparison
             # The model outputs are already in normalized scale
-            # The targets from the dataloader are also in normalized scale
+            # The targets from the dataloader are now also in normalized scale
             pred_batch = outputs.cpu().numpy()
             target_batch = target.cpu().numpy()
 
@@ -141,10 +141,14 @@ def main():
                     modalities=["image", "text"],
                     transform=None,
                     max_rotations=MAX_ROTATIONS,
-                    normalize_labels=False,  # Don't normalize in dataset, handle it manually
+                    normalize_labels=True,  # Enable normalization
                     normalization_method=NORMALIZATION_METHOD,
                     fit_normalizer_on_data=False,
                 )
+                
+                # Set the normalizer on the dataset if available
+                if normalizer is not None:
+                    id_dataset.set_normalizer(normalizer)
                 
                 # Use the same collate function as training
                 dataloader = DataLoader(
