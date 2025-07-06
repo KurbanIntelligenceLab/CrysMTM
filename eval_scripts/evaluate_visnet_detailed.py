@@ -154,6 +154,10 @@ def main():
                     fit_normalizer_on_data=False,
                 )
                 
+                # Set the fitted normalizer for ID dataset
+                if normalizer is not None:
+                    id_dataset.set_normalizer(normalizer)
+                
                 # Use PyG DataLoader
                 dataloader = PyGDataLoader(
                     id_dataset, batch_size=BATCH_SIZE, shuffle=False
