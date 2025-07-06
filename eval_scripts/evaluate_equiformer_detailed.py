@@ -13,10 +13,10 @@ TEST_TEMPS = ID_TEMPS + OOD_TEMPS
 
 def load_equiformer_model(target_name, seed, device):
     """Load trained Equiformer model."""
-    model_path = os.path.join("results", f"equiformer/{target_name}", str(seed), "best_model.pth")
+    model_path = os.path.join("results", f"regression/equiformer/{target_name}", str(seed), "best_model.pth")
     
     # Load normalizer if available
-    normalizer_path = os.path.join("results", f"equiformer/{target_name}", str(seed), "normalizer.pkl")
+    normalizer_path = os.path.join("results", f"regression/equiformer/{target_name}", str(seed), "normalizer.pkl")
     normalizer = None
     if os.path.exists(normalizer_path):
         with open(normalizer_path, 'rb') as f:
@@ -33,7 +33,7 @@ def add_node_atom(batch):
     if not hasattr(batch, 'node_atom'):
         # Try to infer from element symbols if available
         if hasattr(batch, 'element'):
-            element_to_z = {"H": 0, "C": 1, "N": 2, "O": 3, "F": 4}  # QM9 mapping
+            element_to_z = {"Ti": 22, "O": 8}
             batch.node_atom = torch.tensor([element_to_z.get(e, 0) for e in batch.element], dtype=torch.long, device=batch.pos.device)
         elif hasattr(batch, 'z'):
             batch.node_atom = batch.z
@@ -126,7 +126,7 @@ def main():
     for target_name in TARGET_PROPERTIES:
         for seed in SEEDS:
             try:
-                model_path = os.path.join("results", f"equiformer/{target_name}", str(seed), "best_model.pth")
+                model_path = os.path.join("results", f"regression/equiformer/{target_name}", str(seed), "best_model.pth")
                 if not os.path.exists(model_path):
                     print(f"Model not found: {model_path}")
                     continue
@@ -168,10 +168,10 @@ def main():
                 
                 df.to_csv(combined_path, mode='a', header=first_write, index=False)
                 first_write = False
-                print(f"Saved results for equiformer/{target_name}/{seed} to {combined_path}")
+                print(f"Saved results for regression/equiformer/{target_name}/{seed} to {combined_path}")
                 
             except Exception as e:
-                print(f"Error evaluating equiformer/{target_name}/{seed}: {e}")
+                print(f"Error evaluating regression/equiformer/{target_name}/{seed}: {e}")
                 continue
     
     print(f"All Equiformer results saved to {combined_path}")
