@@ -7,5 +7,4 @@ GotenNetRegressor = GotenNetWrapper(
     cutoff_fn=CosineCutoff(5.0),
     num_heads=2,
     n_rbf=4
-    # Add other parameters as needed, or use defaults
 ) 

@@ -46,11 +46,11 @@ def call_openrouter_llm(messages, model, max_retries=MAX_RETRIES):
     raise RuntimeError("Failed to get response from OpenRouter after retries.")
 
 # ========== PROMPT GENERATION ==========
-def build_property_prediction_prompt(text, image_path, curr_temp, few_shot_examples, model_name):
+def build_property_prediction_prompt(text, image_path, curr_temp, model_name):
     target_props_str = ", ".join(TARGET_PROPERTIES)
     system_content = (
         "You are a materials science expert. "
-        "Given a nanoparticle's summary, the current temperature, and examples of properties at different temperatures, "
+        "Given a nanoparticle's summary and the current temperature, "
         f"predict the following properties: {target_props_str} (in eV). "
         "\n\nProperty definitions:"
         "\n- HOMO: HOMO energy (E_H)"
@@ -67,19 +67,9 @@ def build_property_prediction_prompt(text, image_path, curr_temp, few_shot_examp
         "Do not include any explanation or extra text."
     )
     
-    # Build few-shot examples
-    examples_text = ""
-    for i, example in enumerate(few_shot_examples):
-        example_props_str = ", ".join([f"{k}: {example['properties'][k]:.4f}" for k in TARGET_PROPERTIES])
-        examples_text += f"Example {i+1}:\n"
-        examples_text += f"Temperature: {example['temperature']} K\n"
-        examples_text += f"Summary: {example['text']}\n"
-        examples_text += f"Properties: {example_props_str}\n\n"
-    
     user_text = (
         f"Current temperature: {curr_temp} K\n"
         f"Summary:\n{text}\n\n"
-        f"Here are some examples:\n{examples_text}"
         "Predict the properties and return as a Python dict."
     )
     
@@ -126,47 +116,20 @@ def compute_error(pred, true):
     return {k: abs(pred.get(k, 0) - true[k]) for k in true}
 
 # ========== MAIN ==========
-def process_sample(sample, model_name, temp_set, phase, temp, sample_lookup, train_samples):
+def process_sample(sample, model_name, temp_set, phase, temp):
     gt = {k: sample[k] for k in TARGET_PROPERTIES}
     curr_temp = sample['temperature']
     rotation = sample['rotation']
-    
-    # Get few-shot examples from training temperatures
-    available_train_samples = [
-        s for s in train_samples 
-        if s['phase'] == phase and s['temperature'] in TRAIN_TEMPS
-    ]
-    
-    if len(available_train_samples) < FEW_SHOT_EXAMPLES:
-        return None
-    
-    # Randomly select few-shot examples
-    few_shot_examples = random.sample(available_train_samples, FEW_SHOT_EXAMPLES)
-    
-    # Format examples for the prompt and record indices
-    formatted_examples = []
-    few_shot_indices = []
-    for example in few_shot_examples:
-        formatted_examples.append({
-            'temperature': example['temperature'],
-            'text': example['text'],
-            'properties': {k: example[k] for k in TARGET_PROPERTIES}
-        })
-        few_shot_indices.append({
-            'temperature': example['temperature'],
-            'rotation': example['rotation']
-        })
     
     messages = build_property_prediction_prompt(
         text=sample['text'],
         image_path=sample['image_path'],
         curr_temp=curr_temp,
-        few_shot_examples=formatted_examples,
         model_name=model_name
     )
     try:
         llm_output = call_openrouter_llm(messages, model=model_name)
-        print(f"Model: {model_name} | Phase: {phase} | Temp: {temp} | Rot: {rotation} | Few-shot examples: {len(few_shot_examples)} | Output: {llm_output}")
+        print(f"Model: {model_name} | Phase: {phase} | Temp: {temp} | Rot: {rotation} | Zero-shot | Output: {llm_output}")
         # Try to parse output, set missing values to None
         parsed = {k: None for k in TARGET_PROPERTIES}
         if llm_output:
@@ -198,8 +161,7 @@ def process_sample(sample, model_name, temp_set, phase, temp, sample_lookup, tra
             'model': model_name,
             'llm_output': llm_output,
             'parsed': parsed,
-            'few_shot_examples_used': len(few_shot_examples),
-            'few_shot_indices': few_shot_indices
+            'zero_shot': True
         }
         return result
     except Exception as e:
@@ -214,8 +176,7 @@ def process_sample(sample, model_name, temp_set, phase, temp, sample_lookup, tra
             'model': model_name,
             'llm_output': llm_output,
             'parsed': parsed,
-            'few_shot_examples_used': len(few_shot_examples),
-            'few_shot_indices': few_shot_indices
+            'zero_shot': True
         }
         return result
 
@@ -236,11 +197,6 @@ def main():
         key = (sample['phase'], sample['temperature'])
         phase_temp_samples.setdefault(key, []).append((idx, sample))
     
-    # Prepare training samples for few-shot examples
-    train_samples = []
-    for sample in dataset:
-        if sample['temperature'] in TRAIN_TEMPS:
-            train_samples.append(sample)
     for model_cfg in tqdm(MODELS_TO_TEST, desc="Models"):
         model_name = model_cfg['name']
         model_results = []
@@ -254,7 +210,7 @@ def main():
                     chosen = random.sample(samples, min(n_samples, len(samples)))
                     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                         futures = [
-                            executor.submit(process_sample, sample, model_name, temp_set, phase, temp, sample_lookup, train_samples)
+                            executor.submit(process_sample, sample, model_name, temp_set, phase, temp)
                             for idx, sample in chosen
                         ]
                         for future in tqdm(as_completed(futures), total=len(futures), desc=f"{model_name} {phase} {temp}K", leave=False):
@@ -281,7 +237,7 @@ def main():
             mae[k] = sum(vals) / len(vals) if vals else None
         # Save as a dict with results and mae
         output = {'results': model_results, 'mae': mae}
-        output_dir = os.path.join("results", "llm_regression2", model_name.replace('/', '_'))
+        output_dir = os.path.join("results", "llm_zero_shot2", model_name.replace('/', '_'))
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, "llm_property_prediction_outputs.json")
         with open(output_path, "w") as f:
@@ -289,4 +245,4 @@ def main():
     print("Saved per-sample outputs and MAE for each model.")
 
 if __name__ == "__main__":
-    main()
+    main() 

@@ -11,34 +11,11 @@ class ResNetRegressor(nn.Module):
         self.model_name = model_name
         self.pretrained = pretrained
 
-        # Load ResNet model
-        if model_name == "resnet18":
-            if pretrained:
-                self.resnet_model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-            else:
-                self.resnet_model = models.resnet18(weights=None)
-        elif model_name == "resnet34":
-            if pretrained:
-                self.resnet_model = models.resnet34(weights=models.ResNet34_Weights.IMAGENET1K_V1)
-            else:
-                self.resnet_model = models.resnet34(weights=None)
-        elif model_name == "resnet50":
-            if pretrained:
-                self.resnet_model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-            else:
-                self.resnet_model = models.resnet50(weights=None)
-        elif model_name == "resnet101":
-            if pretrained:
-                self.resnet_model = models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V1)
-            else:
-                self.resnet_model = models.resnet101(weights=None)
-        elif model_name == "resnet152":
-            if pretrained:
-                self.resnet_model = models.resnet152(weights=models.ResNet152_Weights.IMAGENET1K_V1)
-            else:
-                self.resnet_model = models.resnet152(weights=None)
+        if pretrained:
+            self.resnet_model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
         else:
-            raise ValueError(f"Unsupported ResNet model: {model_name}")
+            self.resnet_model = models.resnet50(weights=None)
+
 
         # Replace the final classification layer with a regression head (single output)
         in_features = self.resnet_model.fc.in_features

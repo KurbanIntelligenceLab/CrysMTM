@@ -11,24 +11,12 @@ class ViTRegressor(nn.Module):
         self.model_name = model_name
         self.pretrained = pretrained
 
-        # Load ViT model
-        if model_name == "vit_b_16":
-            if pretrained:
-                self.vit_model = models.vit_b_16(weights=models.ViT_B_16_Weights.IMAGENET1K_V1)
-            else:
-                self.vit_model = models.vit_b_16(weights=None)
-        elif model_name == "vit_b_32":
-            if pretrained:
-                self.vit_model = models.vit_b_32(weights=models.ViT_B_32_Weights.IMAGENET1K_V1)
-            else:
-                self.vit_model = models.vit_b_32(weights=None)
-        elif model_name == "vit_l_16":
-            if pretrained:
-                self.vit_model = models.vit_l_16(weights=models.ViT_L_16_Weights.IMAGENET1K_V1)
-            else:
-                self.vit_model = models.vit_l_16(weights=None)
+
+        if pretrained:
+            self.vit_model = models.vit_b_16(weights=models.ViT_B_16_Weights.IMAGENET1K_V1)
         else:
-            raise ValueError(f"Unsupported ViT model: {model_name}")
+            self.vit_model = models.vit_b_16(weights=None)
+
 
         # Replace the classification head with a regression head (single output)
         in_features = self.vit_model.heads.head.in_features
