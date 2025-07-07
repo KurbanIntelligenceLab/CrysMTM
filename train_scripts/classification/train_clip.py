@@ -15,8 +15,8 @@ from configs.classifier_config import (
     MAX_ROTATIONS,
     NUM_EPOCHS,
     NUM_WORKERS,
-    SEEDS,
     TRAIN_TEMPS,
+    SEEDS,
 )
 from dataloaders.classification_dataloader import ClassificationLoader
 from models.classification.clip_classifier import (
@@ -132,7 +132,8 @@ def main():
             modalities=["image", "text"],
             transform=None,
             max_rotations=MAX_ROTATIONS,
-        )
+        )        
+        
 
         train_dataset, val_dataset = split_dataset(full_train_dataset, val_ratio=0.2)
         train_loader = DataLoader(
@@ -149,6 +150,8 @@ def main():
             num_workers=NUM_WORKERS,
             collate_fn=lambda b: collate_fn_clip(b, processor),
         )
+        
+        
 
         # Optimizer (only for classifier parameters)
         optimizer = optim.AdamW(model.classifier.parameters(), lr=LEARNING_RATE)
