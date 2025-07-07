@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from transformers import CLIPProcessor, CLIPModel
+from transformers import CLIPModel, CLIPProcessor
+
 
 class Pure2DopeNetRegressor(nn.Module):
     def __init__(self, input_channels=3, text_embedding_dim=512, feature_dim=64):
@@ -11,19 +12,15 @@ class Pure2DopeNetRegressor(nn.Module):
             nn.Conv2d(input_channels, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Conv2d(128, 512, kernel_size=3, stride=2, padding=1),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Conv2d(512, 256, kernel_size=3, stride=2, padding=1),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Conv2d(256, 64, kernel_size=3, stride=2, padding=1),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Conv2d(64, feature_dim, kernel_size=3, stride=2, padding=1),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
@@ -34,7 +31,7 @@ class Pure2DopeNetRegressor(nn.Module):
             nn.Linear(text_embedding_dim, 128),
             nn.ReLU(inplace=True),
             nn.Linear(128, feature_dim),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
 
         # Fully Connected Layers with Concatenated Text Embeddings
@@ -42,32 +39,25 @@ class Pure2DopeNetRegressor(nn.Module):
             nn.LazyLinear(512),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Linear(512 + feature_dim, 256),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Linear(256 + feature_dim, 128),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Linear(128 + feature_dim, 64),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Linear(64 + feature_dim, 32),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Linear(32 + feature_dim, 16),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
             nn.Linear(16 + feature_dim, 8),
             nn.ReLU(inplace=True),
             nn.Dropout(0.4),
-
-            nn.Linear(8 + feature_dim, 1)  # Final Output Layer
+            nn.Linear(8 + feature_dim, 1),  # Final Output Layer
         )
 
     def forward(self, x, text_vector):
@@ -86,6 +76,7 @@ class Pure2DopeNetRegressor(nn.Module):
 
         return x
 
+
 class CLIPTextEmbedder:
     def __init__(self, model_name="openai/clip-vit-base-patch16"):
         self.processor = CLIPProcessor.from_pretrained(model_name, use_fast=True)
@@ -99,4 +90,4 @@ class CLIPTextEmbedder:
             texts, return_tensors="pt", padding=True, truncation=True
         )
         features = self.model.get_text_features(**inputs)
-        return features 
+        return features

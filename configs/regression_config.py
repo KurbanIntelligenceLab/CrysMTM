@@ -17,7 +17,9 @@ TARGET_PROPERTIES = ["HOMO", "LUMO", "Eg", "Ef", "Et", "Eta", "disp", "vol", "bo
 
 # Label normalization parameters
 NORMALIZE_LABELS = True
-NORMALIZATION_METHOD = "standard"  # "standard" for z-score, "minmax" for min-max scaling
+NORMALIZATION_METHOD = (
+    "standard"  # "standard" for z-score, "minmax" for min-max scaling
+)
 
 # Early stopping configuration
 EARLY_STOPPING_PATIENCE = 10
@@ -25,13 +27,15 @@ EARLY_STOPPING_MIN_DELTA = 1e-4
 
 
 class EarlyStopping:
-    def __init__(self, patience=EARLY_STOPPING_PATIENCE, min_delta=EARLY_STOPPING_MIN_DELTA):
+    def __init__(
+        self, patience=EARLY_STOPPING_PATIENCE, min_delta=EARLY_STOPPING_MIN_DELTA
+    ):
         self.patience = patience
         self.min_delta = min_delta
         self.counter = 0
-        self.best_loss = float('inf')
+        self.best_loss = float("inf")
         self.early_stop = False
-        
+
     def __call__(self, val_loss):
         if val_loss < self.best_loss - self.min_delta:
             self.best_loss = val_loss

@@ -1,32 +1,52 @@
 import os
+import pickle
+
+import pandas as pd
 import torch
 import torch.nn as nn
-import pandas as pd
-import pickle
 from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.nn import global_mean_pool, knn_graph
 
-from dataloaders.regression_dataloader import RegressionLoader
 from configs.regression_config import (
-    SEEDS, TARGET_PROPERTIES, BASE_DIR, MAX_ROTATIONS, NORMALIZE_LABELS, NORMALIZATION_METHOD, ID_TEMPS, BATCH_SIZE, OOD_TEMPS
+    BASE_DIR,
+    BATCH_SIZE,
+    ID_TEMPS,
+    MAX_ROTATIONS,
+    NORMALIZATION_METHOD,
+    NORMALIZE_LABELS,
+    OOD_TEMPS,
+    SEEDS,
+    TARGET_PROPERTIES,
 )
+from dataloaders.regression_dataloader import RegressionLoader
+
 TEST_TEMPS = ID_TEMPS + OOD_TEMPS
+
+
 def load_gotennet_model(target_name, seed, device):
     """Load trained GotenNet model and regression head."""
-    model_path = os.path.join("results", f"regression/gotennet/{target_name}", str(seed), "best_model.pth")
-    reg_head_path = os.path.join("results", f"regression/gotennet/{target_name}", str(seed), "best_reg_head.pth")
-    normalizer_path = os.path.join("results", f"regression/gotennet/{target_name}", str(seed), "normalizer.pkl")
+    model_path = os.path.join(
+        "results", f"regression/gotennet/{target_name}", str(seed), "best_model.pth"
+    )
+    reg_head_path = os.path.join(
+        "results", f"regression/gotennet/{target_name}", str(seed), "best_reg_head.pth"
+    )
+    normalizer_path = os.path.join(
+        "results", f"regression/gotennet/{target_name}", str(seed), "normalizer.pkl"
+    )
     normalizer = None
     if os.path.exists(normalizer_path):
-        with open(normalizer_path, 'rb') as f:
+        with open(normalizer_path, "rb") as f:
             normalizer = pickle.load(f)
     from models.regression.gotennet_regressor import GotenNetRegressor
+
     model = GotenNetRegressor.to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     hidden_dim = 32  # n_atom_basis
     reg_head = nn.Linear(hidden_dim, 1).to(device)
     reg_head.load_state_dict(torch.load(reg_head_path, map_location=device))
     return model, reg_head, normalizer
+
 
 def evaluate_gotennet_detailed(model_info, dataloader, device, target_name, seed):
     """Evaluate GotenNet model and return detailed predictions with metadata."""
@@ -56,9 +76,11 @@ def evaluate_gotennet_detailed(model_info, dataloader, device, target_name, seed
             pred_batch = outputs.cpu().numpy()
             target_batch = target.cpu().numpy()
             # Robust batch/metadata alignment
-            if hasattr(batch, 'temperature') or hasattr(batch, 'temperatures'):
-                batch_size = len(getattr(batch, 'temperature', getattr(batch, 'temperatures', [])))
-            elif hasattr(batch, 'batch') and batch.batch is not None:
+            if hasattr(batch, "temperature") or hasattr(batch, "temperatures"):
+                batch_size = len(
+                    getattr(batch, "temperature", getattr(batch, "temperatures", []))
+                )
+            elif hasattr(batch, "batch") and batch.batch is not None:
                 batch_size = batch.batch.max().item() + 1
             else:
                 batch_size = len(target_batch.flatten())
@@ -66,26 +88,31 @@ def evaluate_gotennet_detailed(model_info, dataloader, device, target_name, seed
             targets.extend(target_batch.flatten()[:batch_size])
             for i in range(batch_size):
                 dataset_idx = dataset_idx_counter + i
-                if hasattr(dataloader.dataset, 'data') and dataset_idx < len(dataloader.dataset.data):
+                if hasattr(dataloader.dataset, "data") and dataset_idx < len(
+                    dataloader.dataset.data
+                ):
                     entry = dataloader.dataset.data[dataset_idx]
-                    temperature = entry.get('temperature', None)
-                    composition = entry.get('phase', None)
+                    temperature = entry.get("temperature", None)
+                    composition = entry.get("phase", None)
                 else:
                     temperature = None
                     composition = None
                 if temperature is None or composition is None:
                     print(f"WARNING: Missing metadata at batch {batch_idx}, sample {i}")
-                metadata.append({
-                    'model': 'gotennet',
-                    'target': target_name,
-                    'seed': seed,
-                    'batch_idx': i,
-                    'sample_idx': dataset_idx,
-                    'temperature': temperature,
-                    'composition': composition
-                })
+                metadata.append(
+                    {
+                        "model": "gotennet",
+                        "target": target_name,
+                        "seed": seed,
+                        "batch_idx": i,
+                        "sample_idx": dataset_idx,
+                        "temperature": temperature,
+                        "composition": composition,
+                    }
+                )
             dataset_idx_counter += batch_size
     return predictions, targets, metadata
+
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -97,7 +124,12 @@ def main():
     for target_name in TARGET_PROPERTIES:
         for seed in SEEDS:
             try:
-                model_path = os.path.join("results", f"regression/gotennet/{target_name}", str(seed), "best_model.pth")
+                model_path = os.path.join(
+                    "results",
+                    f"regression/gotennet/{target_name}",
+                    str(seed),
+                    "best_model.pth",
+                )
                 if not os.path.exists(model_path):
                     print(f"Model not found: {model_path}")
                     continue
@@ -115,26 +147,33 @@ def main():
                 )
                 if normalizer is not None:
                     id_dataset.set_normalizer(normalizer)
-                dataloader = PyGDataLoader(id_dataset, batch_size=BATCH_SIZE, shuffle=False)
+                dataloader = PyGDataLoader(
+                    id_dataset, batch_size=BATCH_SIZE, shuffle=False
+                )
                 predictions, targets, metadata = evaluate_gotennet_detailed(
                     model_info, dataloader, device, target_name, seed
                 )
-                df = pd.DataFrame({
-                    'model': 'gotennet',
-                    'property': target_name,
-                    'seed': seed,
-                    'prediction': predictions,
-                    'actual': targets,
-                    'temperature': [m.get('temperature') for m in metadata],
-                    'composition': [m.get('composition') for m in metadata]
-                })
-                df.to_csv(combined_path, mode='a', header=first_write, index=False)
+                df = pd.DataFrame(
+                    {
+                        "model": "gotennet",
+                        "property": target_name,
+                        "seed": seed,
+                        "prediction": predictions,
+                        "actual": targets,
+                        "temperature": [m.get("temperature") for m in metadata],
+                        "composition": [m.get("composition") for m in metadata],
+                    }
+                )
+                df.to_csv(combined_path, mode="a", header=first_write, index=False)
                 first_write = False
-                print(f"Saved results for regression/gotennet/{target_name}/{seed} to {combined_path}")
+                print(
+                    f"Saved results for regression/gotennet/{target_name}/{seed} to {combined_path}"
+                )
             except Exception as e:
                 print(f"Error evaluating regression/gotennet/{target_name}/{seed}: {e}")
                 continue
     print(f"All GotenNet results saved to {combined_path}")
 
+
 if __name__ == "__main__":
-    main() 
+    main()

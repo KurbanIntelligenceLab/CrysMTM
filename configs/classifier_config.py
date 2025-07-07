@@ -1,6 +1,8 @@
 BASE_DIR = "CrysMTM"
 MAX_ROTATIONS = None
 
+TRAIN_RANGE = range(0, 851, 50)
+TRAIN_TEMPS = [T for T in TRAIN_RANGE if T not in [250, 450, 650, 750, 800]]
 ID_TEMPS = [250, 450, 650, 750, 800]
 OOD_TEMPS = [0, 50, 100, 900, 950, 1000]
 BATCH_SIZE = 64
@@ -8,4 +10,3 @@ NUM_WORKERS = 0
 NUM_EPOCHS = 150
 LEARNING_RATE = 1e-3
 SEEDS = [10, 20, 30]
-TARGET_PROPERTIES = ["HOMO", "LUMO", "Eg", "Ef", "Et", "Eta", "disp", "vol", "bond"]

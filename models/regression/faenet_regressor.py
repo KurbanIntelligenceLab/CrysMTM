@@ -22,4 +22,4 @@ FAENetRegressor = FAENet(
     regress_forces=None,
     force_decoder_type="mlp",
     force_decoder_model_config={"hidden_channels": 32},
-) 
+)

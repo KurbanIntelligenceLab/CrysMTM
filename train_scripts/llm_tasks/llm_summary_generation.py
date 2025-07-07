@@ -1,16 +1,18 @@
-import os
-import json
-import random
-from tqdm import tqdm
-from dataloaders.llm_regression_dataloader import LLMLoader
-from PIL import Image
-from io import BytesIO
 import base64
+import json
+import os
+import random
 import re
-import requests
 import time
-from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
+
+import requests
+from dotenv import load_dotenv
+from PIL import Image
+from tqdm import tqdm
+
+from dataloaders.llm_regression_dataloader import LLMLoader
 
 load_dotenv()
 
@@ -28,15 +30,15 @@ multimodal_models = {
     "anthropic/claude-sonnet-4",
 }
 models_to_test = [
-    {'name': "deepseek/deepseek-chat", 'use_openrouter': True},
-    {'name': "x-ai/grok-2-vision-1212", 'use_openrouter': True},
-    {'name': "x-ai/grok-2-1212", 'use_openrouter': True},
-    {'name': "meta-llama/llama-4-maverick", 'use_openrouter': True},
-    {'name': "mistralai/mistral-medium-3", 'use_openrouter': True},
-    {'name': "openai/gpt-4.1-mini", 'use_openrouter': True},
-    {'name': "google/gemini-2.5-flash-preview-05-20", 'use_openrouter': True},
-    {'name': "anthropic/claude-opus-4", 'use_openrouter': True},
-    {'name': "anthropic/claude-sonnet-4", 'use_openrouter': True}
+    {"name": "deepseek/deepseek-chat", "use_openrouter": True},
+    {"name": "x-ai/grok-2-vision-1212", "use_openrouter": True},
+    {"name": "x-ai/grok-2-1212", "use_openrouter": True},
+    {"name": "meta-llama/llama-4-maverick", "use_openrouter": True},
+    {"name": "mistralai/mistral-medium-3", "use_openrouter": True},
+    {"name": "openai/gpt-4.1-mini", "use_openrouter": True},
+    {"name": "google/gemini-2.5-flash-preview-05-20", "use_openrouter": True},
+    {"name": "anthropic/claude-opus-4", "use_openrouter": True},
+    {"name": "anthropic/claude-sonnet-4", "use_openrouter": True},
 ]
 
 ID_TEMPS = [200, 400, 600]
@@ -46,16 +48,17 @@ ID_SAMPLES_PER_TEMP = 1
 OOD_SAMPLES_PER_TEMP = 1
 OOD_PREV_TEMPS = sorted(list(set(range(150, 851, 50)) - set(ID_TEMPS)))
 
+
 def call_openrouter_llm(messages, model, max_retries=3):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     payload = {
         "model": model,
         "messages": messages,
         "max_tokens": MAX_TOKENS,
-        "temperature": TEMPERATURE
+        "temperature": TEMPERATURE,
     }
     for attempt in range(max_retries):
         try:
@@ -63,36 +66,49 @@ def call_openrouter_llm(messages, model, max_retries=3):
                 url="https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=60
+                timeout=60,
             )
             response.raise_for_status()
             response_json = response.json()
-            if 'error' in response_json:
+            if "error" in response_json:
                 raise Exception(f"OpenRouter API Error: {response_json['error']}")
-            return response_json['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"OpenRouter API error (attempt {attempt+1}/{max_retries}): {e}")
+            return response_json["choices"][0]["message"]["content"]
+        except Exception:
+            print(
+                f"OpenRouter API error (attempt {attempt + 1}/{max_retries})"
+            )  # noqa: T201
             if attempt == max_retries - 1:
                 return None
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
+
 
 def highlight_values_in_template(template_summary):
     # Highlight numbers and values in double curly braces
     # This will match numbers, ranges, coordinates, and values like 1.02:1.01:1.00
     def replacer(match):
         return f"{{{{{match.group(0)}}}}}"
+
     # Numbers (integers, floats, scientific notation)
     pattern = r"-?\d+\.\d+|-?\d+|\d+\.\d+|\d+|\d+\.\d+e[+-]?\d+"
     highlighted = re.sub(pattern, replacer, template_summary)
     # Also highlight tuples like (x, y, z)
-    highlighted = re.sub(r"\(([^)]+)\)", lambda m: f"{{{{({m.group(1)})}}}}", highlighted)
+    highlighted = re.sub(
+        r"\(([^)]+)\)", lambda m: f"{{{{({m.group(1)})}}}}", highlighted
+    )
     # Also highlight ranges like 1.80–2.33 or 0.85–13.24
-    highlighted = re.sub(r"(\d+\.\d+–\d+\.\d+)", lambda m: f"{{{{{m.group(1)}}}}}", highlighted)
+    highlighted = re.sub(
+        r"(\d+\.\d+–\d+\.\d+)", lambda m: f"{{{{{m.group(1)}}}}}", highlighted
+    )
     # Also highlight axis ratios like 1.02:1.01:1.00
-    highlighted = re.sub(r"(\d+\.\d+:\d+\.\d+:\d+\.\d+)", lambda m: f"{{{{{m.group(1)}}}}}", highlighted)
+    highlighted = re.sub(
+        r"(\d+\.\d+:\d+\.\d+:\d+\.\d+)", lambda m: f"{{{{{m.group(1)}}}}}", highlighted
+    )
     return highlighted
 
-def build_summary_generation_prompt(context_summaries, context_temps, target_temp, model_name, image_path):
+
+def build_summary_generation_prompt(
+    context_summaries, context_temps, target_temp, model_name, image_path
+):
     system_content = (
         "You are a materials science expert. "
         "Given two example summaries for a nanoparticle at different temperatures, and an image of the nanoparticle at a new temperature, "
@@ -114,22 +130,29 @@ def build_summary_generation_prompt(context_summaries, context_temps, target_tem
             img_b64 = base64.b64encode(buffered.getvalue()).decode()
         user_content = [
             {"type": "text", "text": user_text},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}", "detail": "low"}}
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{img_b64}",
+                    "detail": "low",
+                },
+            },
         ]
     else:
         user_content = user_text
     messages = [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": user_content}
+        {"role": "user", "content": user_content},
     ]
     return messages
+
 
 def process_sample_summary(sample, temp_set, phase, temp, summary_lookup, model_name):
     # Gather all available context temps for this phase/rotation
     available_contexts = [
-        (t, summary_lookup[(phase, t, sample['rotation'])])
+        (t, summary_lookup[(phase, t, sample["rotation"])])
         for t in OOD_PREV_TEMPS
-        if (phase, t, sample['rotation']) in summary_lookup
+        if (phase, t, sample["rotation"]) in summary_lookup
     ]
     if len(available_contexts) < 2:
         return None
@@ -140,50 +163,52 @@ def process_sample_summary(sample, temp_set, phase, temp, summary_lookup, model_
         context_temps=context_temps,
         target_temp=temp,
         model_name=model_name,
-        image_path=sample['image_path']
+        image_path=sample["image_path"],
     )
     try:
         llm_output = call_openrouter_llm(messages, model=model_name)
-        print(f"Model: {model_name} | Phase: {phase} | Temp: {temp} | Rot: {sample['rotation']} | Output: {llm_output}")
-    except Exception as e:
-        print(f"Error for sample {sample.get('image_path', '')}: {e}")
+        print(
+            f"Model: {model_name} | Phase: {phase} | Temp: {temp} | Rot: {sample['rotation']} | Output: {llm_output}"
+        )
+    except Exception:
+        print(f"Error for sample {sample.get('image_path', '')}")
         llm_output = None
     result = {
-        'phase': phase,
-        'temperature': temp,
-        'rotation': sample['rotation'],
-        'set': temp_set,
-        'model': model_name,
-        'llm_output': llm_output,
-        'reference_summary': sample['text'],
-        'context_summaries': context_summaries,
-        'context_temps': context_temps
+        "phase": phase,
+        "temperature": temp,
+        "rotation": sample["rotation"],
+        "set": temp_set,
+        "model": model_name,
+        "llm_output": llm_output,
+        "reference_summary": sample["text"],
+        "context_summaries": context_summaries,
+        "context_temps": context_temps,
     }
     return result
 
+
 def main():
-    dataset = LLMLoader(
-        label_dir="data_revised",
-        modalities=["text", "image"]
-    )
+    dataset = LLMLoader(label_dir="data_revised", modalities=["text", "image"])
     # Build summary lookup: only one summary per (phase, temp, rotation)
     summary_lookup = {}
     for sample in dataset:
-        key = (sample['phase'], sample['temperature'], sample['rotation'])
+        key = (sample["phase"], sample["temperature"], sample["rotation"])
         if key not in summary_lookup:
-            summary_lookup[key] = sample['text']
+            summary_lookup[key] = sample["text"]
     # Group by phase and temperature
     phase_temp_samples = {}
     for idx, sample in enumerate(dataset):
-        key = (sample['phase'], sample['temperature'])
+        key = (sample["phase"], sample["temperature"])
         phase_temp_samples.setdefault(key, []).append((idx, sample))
     for model_cfg in tqdm(models_to_test, desc="Models"):
-        model_name = model_cfg['name']
+        model_name = model_cfg["name"]
         model_results = []
-        all_futures = []
         all_samples = []
-        for temp_set, temps, n_samples in [('ID', ID_TEMPS, ID_SAMPLES_PER_TEMP), ('OOD', OOD_TEMPS, OOD_SAMPLES_PER_TEMP)]:
-            for phase in ['anatase', 'brookite', 'rutile']:
+        for temp_set, temps, n_samples in [
+            ("ID", ID_TEMPS, ID_SAMPLES_PER_TEMP),
+            ("OOD", OOD_TEMPS, OOD_SAMPLES_PER_TEMP),
+        ]:
+            for phase in ["anatase", "brookite", "rutile"]:
                 for temp in temps:
                     key = (phase, temp)
                     samples = phase_temp_samples.get(key, [])
@@ -194,19 +219,34 @@ def main():
                         all_samples.append((sample, temp_set, phase, temp))
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = [
-                executor.submit(process_sample_summary, sample, temp_set, phase, temp, summary_lookup, model_name)
+                executor.submit(
+                    process_sample_summary,
+                    sample,
+                    temp_set,
+                    phase,
+                    temp,
+                    summary_lookup,
+                    model_name,
+                )
                 for sample, temp_set, phase, temp in all_samples
             ]
-            for future in tqdm(as_completed(futures), total=len(futures), desc=f"{model_name} (all samples)"):
+            for future in tqdm(
+                as_completed(futures),
+                total=len(futures),
+                desc=f"{model_name} (all samples)",
+            ):
                 result = future.result()
                 if result is not None:
                     model_results.append(result)
-        output_dir = os.path.join("results", "llm_summary", model_name.replace('/', '_'))
+        output_dir = os.path.join(
+            "results", "llm_summary", model_name.replace("/", "_")
+        )
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, "llm_summary_generation_outputs.json")
         with open(output_path, "w") as f:
             json.dump(model_results, f, indent=2)
     print("Saved per-sample summary generation outputs for each model.")
 
+
 if __name__ == "__main__":
-    main() 
+    main()

@@ -1,5 +1,6 @@
 import os
 import random
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -11,21 +12,18 @@ from tqdm import tqdm
 from configs.regression_config import (
     BASE_DIR,
     BATCH_SIZE,
-    EarlyStopping,
-    ID_TEMPS,
     LEARNING_RATE,
     MAX_ROTATIONS,
+    NORMALIZATION_METHOD,
+    NORMALIZE_LABELS,
     NUM_EPOCHS,
-    OOD_TEMPS,
     SEEDS,
     TARGET_PROPERTIES,
     TRAIN_TEMPS,
-    NORMALIZE_LABELS,
-    NORMALIZATION_METHOD,
+    EarlyStopping,
 )
 from dataloaders.regression_dataloader import RegressionLoader
 from models.regression.egnn_regressor import EGNNRegressor
-
 
 
 def set_all_seeds(seed):
@@ -38,14 +36,16 @@ def set_all_seeds(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def split_dataset(dataset, val_ratio=0.2, seed=42):
-    np.random.seed(seed)
+
+def split_dataset(dataset, val_ratio=0.2):
     indices = np.arange(len(dataset))
     np.random.shuffle(indices)
     split = int(len(indices) * (1 - val_ratio))
     train_idx, val_idx = indices[:split], indices[split:]
     from torch.utils.data import Subset
+
     return Subset(dataset, train_idx), Subset(dataset, val_idx)
+
 
 def train(model, reg_head, loader, optimizer, epoch, num_epochs, device, target_index):
     model.train()
@@ -53,7 +53,7 @@ def train(model, reg_head, loader, optimizer, epoch, num_epochs, device, target_
     running_loss = 0.0
     total = 0
     criterion = nn.MSELoss()
-    pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]", leave=False)
+    pbar = tqdm(loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]", leave=False)
     for batch in pbar:
         batch = batch.to(device)
         feats = batch.z.unsqueeze(-1).float()  # [num_nodes, 1]
@@ -85,6 +85,7 @@ def train(model, reg_head, loader, optimizer, epoch, num_epochs, device, target_
     avg_loss = running_loss / total
     return avg_loss
 
+
 def evaluate(model, reg_head, loader, device, desc, target_index, normalizer=None):
     model.eval()
     reg_head.eval()
@@ -96,15 +97,15 @@ def evaluate(model, reg_head, loader, device, desc, target_index, normalizer=Non
     with torch.no_grad():
         for batch in pbar:
             batch = batch.to(device)
-            feats = batch.z.unsqueeze(-1).float()  # [num_nodes, 1]
-            x = torch.cat([batch.pos, feats], dim=1)  # [num_nodes, 4]
+            feats = batch.z.unsqueeze(-1).float()
+            x = torch.cat([batch.pos, feats], dim=1)
             edge_index = batch.edge_index
             if edge_index is None:
                 edge_index = knn_graph(batch.pos, k=8, batch=batch.batch)
             num_edges = edge_index.size(1)
             dummy_edge_attr = x.new_zeros((num_edges, 0))
             out = model(x, edge_index, batch.batch, edge_attr=dummy_edge_attr)
-            node_feats = out[:, 3:]  # [num_nodes, feats_dim]
+            node_feats = out[:, 3:]
             pooled = global_mean_pool(node_feats, batch.batch)
             outputs = reg_head(pooled)
             labels = batch.y
@@ -113,24 +114,22 @@ def evaluate(model, reg_head, loader, device, desc, target_index, normalizer=Non
             else:
                 target = labels[:, target_index].unsqueeze(1)
             loss = criterion(outputs, target)
-            
-            # Convert to original scale for MAE calculation if normalizer is used
+
             if normalizer is not None:
-                # Convert normalized predictions and targets back to original scale
                 outputs_orig = torch.tensor(
                     normalizer.inverse_transform(outputs.cpu().numpy()),
                     dtype=torch.float,
-                    device=device
+                    device=device,
                 )
                 target_orig = torch.tensor(
                     normalizer.inverse_transform(target.cpu().numpy()),
                     dtype=torch.float,
-                    device=device
+                    device=device,
                 )
                 mae = torch.mean(torch.abs(outputs_orig - target_orig)).item()
             else:
                 mae = torch.mean(torch.abs(outputs - target)).item()
-            
+
             running_loss += loss.item() * target.size(0)
             running_mae += mae * target.size(0)
             total += target.size(0)
@@ -140,6 +139,7 @@ def evaluate(model, reg_head, loader, device, desc, target_index, normalizer=Non
     avg_loss = running_loss / total if total > 0 else 0.0
     avg_mae = running_mae / total if total > 0 else 0.0
     return avg_loss, avg_mae
+
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -164,50 +164,28 @@ def main():
                 normalization_method=NORMALIZATION_METHOD,
                 fit_normalizer_on_data=True,  # Fit on training data
             )
-            
+
             # Get the fitted normalizer from training dataset
             normalizer = full_train_dataset.normalizer if NORMALIZE_LABELS else None
-            
-            id_dataset = RegressionLoader(
-                label_dir=BASE_DIR,
-                temperature_filter=lambda temp: temp in ID_TEMPS,
-                modalities=["xyz", "element"],
-                max_rotations=MAX_ROTATIONS,
-                as_pyg_data=True,
-                normalize_labels=NORMALIZE_LABELS,
-                normalization_method=NORMALIZATION_METHOD,
-                fit_normalizer_on_data=False,
-            )
-            ood_dataset = RegressionLoader(
-                label_dir=BASE_DIR,
-                temperature_filter=lambda temp: temp in OOD_TEMPS,
-                modalities=["xyz", "element"],
-                max_rotations=MAX_ROTATIONS,
-                as_pyg_data=True,
-                normalize_labels=NORMALIZE_LABELS,
-                normalization_method=NORMALIZATION_METHOD,
-                fit_normalizer_on_data=False,
-            )
-            
-            # Set the fitted normalizer for ID and OOD datasets
-            if normalizer is not None:
-                id_dataset.set_normalizer(normalizer)
-                ood_dataset.set_normalizer(normalizer)
 
             # Split train/val
             train_dataset, val_dataset = split_dataset(
-                full_train_dataset, val_ratio=0.2, seed=seed
+                full_train_dataset, val_ratio=0.2
             )
-            train_loader = PyGDataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-            val_loader = PyGDataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
-            id_loader = PyGDataLoader(id_dataset, batch_size=BATCH_SIZE, shuffle=False)
-            ood_loader = PyGDataLoader(ood_dataset, batch_size=BATCH_SIZE, shuffle=False)
+            train_loader = PyGDataLoader(
+                train_dataset, batch_size=BATCH_SIZE, shuffle=True
+            )
+            val_loader = PyGDataLoader(
+                val_dataset, batch_size=BATCH_SIZE, shuffle=False
+            )
 
             # Model
             model = EGNNRegressor.to(device)
             reg_head = nn.Linear(1, 1).to(device)
-            optimizer = optim.Adam(list(model.parameters()) + list(reg_head.parameters()), lr=LEARNING_RATE)
-            best_val_mae = float('inf')
+            optimizer = optim.Adam(
+                list(model.parameters()) + list(reg_head.parameters()), lr=LEARNING_RATE
+            )
+            best_val_mae = float("inf")
             best_model_path = os.path.join(out_dir, "best_model.pth")
             best_reg_head_path = os.path.join(out_dir, "best_reg_head.pth")
             early_stopping = EarlyStopping()
@@ -215,59 +193,47 @@ def main():
             # Training loop
             for epoch in range(NUM_EPOCHS):
                 train_loss = train(
-                    model, reg_head, train_loader, optimizer, epoch, NUM_EPOCHS, device, target_index
+                    model,
+                    reg_head,
+                    train_loader,
+                    optimizer,
+                    epoch,
+                    NUM_EPOCHS,
+                    device,
+                    target_index,
                 )
                 val_loss, val_mae = evaluate(
-                    model, reg_head, val_loader, device, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Val]", target_index=target_index, normalizer=normalizer
+                    model,
+                    reg_head,
+                    val_loader,
+                    device,
+                    desc=f"Epoch {epoch + 1}/{NUM_EPOCHS} [Val]",
+                    target_index=target_index,
+                    normalizer=normalizer,
                 )
                 print(
-                    f"Target {target_name} | Seed {seed} | Epoch {epoch+1}/{NUM_EPOCHS} | Train MSE: {train_loss:.4f} | Val MSE: {val_loss:.4f} | Val MAE: {val_mae:.4f}"
+                    f"Target {target_name} | Seed {seed} | Epoch {epoch + 1}/{NUM_EPOCHS} | Train MSE: {train_loss:.4f} | Val MSE: {val_loss:.4f} | Val MAE: {val_mae:.4f}"
                 )
                 if val_mae < best_val_mae:
                     best_val_mae = val_mae
                     torch.save(model.state_dict(), best_model_path)
                     torch.save(reg_head.state_dict(), best_reg_head_path)
-                
+
                 # Early stopping check
                 if early_stopping(val_mae):
-                    print(f"Early stopping triggered at epoch {epoch+1}")
+                    print(f"Early stopping triggered at epoch {epoch + 1}")
                     break
 
-            # Load best model and evaluate on ID/OOD
-            model.load_state_dict(torch.load(best_model_path))
-            reg_head.load_state_dict(torch.load(best_reg_head_path))
-            id_loss, id_mae = evaluate(model, reg_head, id_loader, device, desc="ID Test", target_index=target_index, normalizer=normalizer)
-            ood_loss, ood_mae = evaluate(model, reg_head, ood_loader, device, desc="OOD Test", target_index=target_index, normalizer=normalizer)
-            print(
-                f"Target {target_name} | Seed {seed} | ID Test MAE: {id_mae:.4f} | OOD Test MAE: {ood_mae:.4f}"
-            )
-
-            with open(os.path.join(out_dir, "results.txt"), "w") as f:
-                f.write(f"Best Val MAE: {best_val_mae:.4f}\n")
-                f.write(f"ID Test MSE: {id_loss:.4f}\n")
-                f.write(f"OOD Test MSE: {ood_loss:.4f}\n")
-                f.write(f"ID Test MAE: {id_mae:.4f}\n")
-                f.write(f"OOD Test MAE: {ood_mae:.4f}\n")
-            
             # Save normalizer if used
             if normalizer is not None:
                 import pickle
+
                 with open(os.path.join(out_dir, "normalizer.pkl"), "wb") as f:
                     pickle.dump(normalizer, f)
                 print(f"Normalizer saved to {os.path.join(out_dir, 'normalizer.pkl')}")
-            
+
             print(f"Results and best model saved in {out_dir}")
 
-# # Utility: scan for max number of nodes in any graph
-# if __name__ == "__main__":
-#     dataset = RegressionLoader(
-#         label_dir=BASE_DIR,
-#         modalities=["xyz", "element"],
-#         as_pyg_data=True,
-#     )
-#     max_nodes = max([data.z.size(0) for data in dataset])
-#     print(f"Max nodes in any graph: {max_nodes}")
-#     exit(0)
 
 if __name__ == "__main__":
-    main() 
+    main()

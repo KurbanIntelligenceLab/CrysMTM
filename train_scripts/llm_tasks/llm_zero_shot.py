@@ -1,30 +1,50 @@
-import os
-import json
-import requests
-import time
-import random
-from tqdm import tqdm
-from dataloaders.llm_regression_dataloader import LLMLoader
-from PIL import Image
-from io import BytesIO
 import base64
+import json
+import os
+import random
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from configs.llm_config import *
+from io import BytesIO
+
+import requests
+from PIL import Image
+from tqdm import tqdm
+
+from configs.llm_config import (
+    BASE_DIR,
+    ID_SAMPLES_PER_TEMP,
+    ID_TEMPS,
+    MAX_RETRIES,
+    MAX_ROTATIONS,
+    MAX_TOKENS,
+    MAX_WORKERS,
+    MODALITIES,
+    MODELS_TO_TEST,
+    MULTIMODAL_MODELS,
+    OOD_SAMPLES_PER_TEMP,
+    OOD_TEMPS,
+    OPENROUTER_API_KEY,
+    TARGET_PROPERTIES,
+    TEMPERATURE,
+    TIMEOUT,
+)
+from dataloaders.llm_regression_dataloader import LLMLoader
 
 # ========== CONFIG ==========
 # All configuration is now imported from configs.llm_config
+
 
 # ========== LLM CALL ==========
 def call_openrouter_llm(messages, model, max_retries=MAX_RETRIES):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
     payload = {
         "model": model,
         "messages": messages,
         "max_tokens": MAX_TOKENS,
-        "temperature": TEMPERATURE
+        "temperature": TEMPERATURE,
     }
     for attempt in range(max_retries):
         try:
@@ -32,18 +52,19 @@ def call_openrouter_llm(messages, model, max_retries=MAX_RETRIES):
                 url="https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=TIMEOUT
+                timeout=TIMEOUT,
             )
             response.raise_for_status()
             response_json = response.json()
-            if 'error' in response_json:
+            if "error" in response_json:
                 raise Exception(f"OpenRouter API Error: {response_json['error']}")
-            return response_json['choices'][0]['message']['content']
-        except Exception as e:
+            return response_json["choices"][0]["message"]["content"]
+        except Exception:
             if attempt == max_retries - 1:
                 raise
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     raise RuntimeError("Failed to get response from OpenRouter after retries.")
+
 
 # ========== PROMPT GENERATION ==========
 def build_property_prediction_prompt(text, image_path, curr_temp, model_name):
@@ -54,7 +75,7 @@ def build_property_prediction_prompt(text, image_path, curr_temp, model_name):
         f"predict the following properties: {target_props_str} (in eV). "
         "\n\nProperty definitions:"
         "\n- HOMO: HOMO energy (E_H)"
-        "\n- LUMO: LUMO energy (E_L)" 
+        "\n- LUMO: LUMO energy (E_L)"
         "\n- Eg: band gap energy (E_g)"
         "\n- Ef: Fermi energy (E_f)"
         "\n- Et: total energy of the system (E_T)"
@@ -66,13 +87,13 @@ def build_property_prediction_prompt(text, image_path, curr_temp, model_name):
         "Use 4-digit precision for all values (e.g., 1.2340). "
         "Do not include any explanation or extra text."
     )
-    
+
     user_text = (
         f"Current temperature: {curr_temp} K\n"
         f"Summary:\n{text}\n\n"
         "Predict the properties and return as a Python dict."
     )
-    
+
     if model_name in MULTIMODAL_MODELS:
         with Image.open(image_path) as img:
             buffered = BytesIO()
@@ -80,17 +101,24 @@ def build_property_prediction_prompt(text, image_path, curr_temp, model_name):
             img_b64 = base64.b64encode(buffered.getvalue()).decode()
         user_content = [
             {"type": "text", "text": user_text},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}", "detail": "low"}}
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{img_b64}",
+                    "detail": "low",
+                },
+            },
         ]
     else:
         user_content = user_text
     messages = [
         {"role": "system", "content": system_content},
-        {"role": "user", "content": user_content}
+        {"role": "user", "content": user_content},
     ]
     print("\n--- SYSTEM PROMPT ---\n", system_content)
     print("\n--- USER PROMPT ---\n", user_text)
     return messages
+
 
 # ========== PROPERTY EXTRACTION ==========
 def extract_properties_from_llm_output(output):
@@ -103,6 +131,7 @@ def extract_properties_from_llm_output(output):
     except Exception:
         # Fallback: try to parse numbers from text
         import re
+
         props = {}
         for k in TARGET_PROPERTIES:
             match = re.search(rf"{k}\s*[:=]\s*([-+]?\d*\.?\d+)", output)
@@ -110,98 +139,109 @@ def extract_properties_from_llm_output(output):
                 props[k] = float(match.group(1))
         return props
 
+
 # ========== ERROR COMPUTATION ==========
 def compute_error(pred, true):
     """Compute absolute error for each property."""
     return {k: abs(pred.get(k, 0) - true[k]) for k in true}
 
+
 # ========== MAIN ==========
 def process_sample(sample, model_name, temp_set, phase, temp):
-    gt = {k: sample[k] for k in TARGET_PROPERTIES}
-    curr_temp = sample['temperature']
-    rotation = sample['rotation']
-    
+    _ = {k: sample[k] for k in TARGET_PROPERTIES}
+    curr_temp = sample["temperature"]
+    rotation = sample["rotation"]
+
     messages = build_property_prediction_prompt(
-        text=sample['text'],
-        image_path=sample['image_path'],
+        text=sample["text"],
+        image_path=sample["image_path"],
         curr_temp=curr_temp,
-        model_name=model_name
+        model_name=model_name,
     )
     try:
         llm_output = call_openrouter_llm(messages, model=model_name)
-        print(f"Model: {model_name} | Phase: {phase} | Temp: {temp} | Rot: {rotation} | Zero-shot | Output: {llm_output}")
+        print(
+            f"Model: {model_name} | Phase: {phase} | Temp: {temp} | Rot: {rotation} | Zero-shot | Output: {llm_output}"
+        )
         # Try to parse output, set missing values to None
         parsed = {k: None for k in TARGET_PROPERTIES}
         if llm_output:
-            import re
             import ast
+            import re
+
             try:
                 # Try to parse as dict
                 if isinstance(llm_output, dict):
                     out_dict = llm_output
                 else:
-                    llm_output_clean = re.sub(r"^```[a-zA-Z]*|```$", "", str(llm_output)).strip()
+                    llm_output_clean = re.sub(
+                        r"^```[a-zA-Z]*|```$", "", str(llm_output)
+                    ).strip()
                     out_dict = ast.literal_eval(llm_output_clean)
                 for k in parsed:
                     parsed[k] = out_dict.get(k, None)
             except Exception:
                 # Try regex fallback
                 for k in parsed:
-                    match = re.search(rf"{k}\\s*[:=]\\s*([-+]?\\d*\\.?\\d+)", str(llm_output))
+                    match = re.search(
+                        rf"{k}\\s*[:=]\\s*([-+]?\\d*\\.?\\d+)", str(llm_output)
+                    )
                     if match:
                         try:
                             parsed[k] = float(match.group(1))
                         except Exception:
                             parsed[k] = None
         result = {
-            'phase': phase,
-            'temperature': temp,
-            'rotation': rotation,
-            'set': temp_set,
-            'model': model_name,
-            'llm_output': llm_output,
-            'parsed': parsed,
-            'zero_shot': True
+            "phase": phase,
+            "temperature": temp,
+            "rotation": rotation,
+            "set": temp_set,
+            "model": model_name,
+            "llm_output": llm_output,
+            "parsed": parsed,
+            "zero_shot": True,
         }
         return result
-    except Exception as e:
-        print(f"Error for sample {sample.get('image_path', '')}: {e}")
+    except Exception:
+        print(f"Error for sample {sample.get('image_path', '')}")
         llm_output = None
         parsed = {k: None for k in TARGET_PROPERTIES}
         result = {
-            'phase': phase,
-            'temperature': temp,
-            'rotation': rotation,
-            'set': temp_set,
-            'model': model_name,
-            'llm_output': llm_output,
-            'parsed': parsed,
-            'zero_shot': True
+            "phase": phase,
+            "temperature": temp,
+            "rotation": rotation,
+            "set": temp_set,
+            "model": model_name,
+            "llm_output": llm_output,
+            "parsed": parsed,
+            "zero_shot": True,
         }
         return result
 
+
 def main():
     dataset = LLMLoader(
-        label_dir=BASE_DIR,
-        modalities=MODALITIES,
-        max_rotations=MAX_ROTATIONS
+        label_dir=BASE_DIR, modalities=MODALITIES, max_rotations=MAX_ROTATIONS
     )
     # Build a lookup for (phase, temperature, rotation) -> properties
     sample_lookup = {}
     for sample in dataset:
-        key = (sample['phase'], sample['temperature'], sample['rotation'])
+        key = (sample["phase"], sample["temperature"], sample["rotation"])
         sample_lookup[key] = {k: sample[k] for k in TARGET_PROPERTIES}
     # Group by phase and temperature
     phase_temp_samples = {}
     for idx, sample in enumerate(dataset):
-        key = (sample['phase'], sample['temperature'])
+        key = (sample["phase"], sample["temperature"])
         phase_temp_samples.setdefault(key, []).append((idx, sample))
-    
+
     for model_cfg in tqdm(MODELS_TO_TEST, desc="Models"):
-        model_name = model_cfg['name']
+        model_name = model_cfg["name"]
         model_results = []
-        for temp_set, temps, n_samples in [('ID', ID_TEMPS, ID_SAMPLES_PER_TEMP), ('OOD', OOD_TEMPS, OOD_SAMPLES_PER_TEMP)]:
-            for phase in ['anatase', 'brookite', 'rutile']:
+        for temp_set, temps, n_samples in [
+            ("ID", ID_TEMPS, ID_SAMPLES_PER_TEMP),
+            ("OOD", OOD_TEMPS, OOD_SAMPLES_PER_TEMP),
+        ]:
+            for phase in ["anatase", "brookite", "rutile"]:
                 for temp in temps:
                     key = (phase, temp)
                     samples = phase_temp_samples.get(key, [])
@@ -210,10 +250,22 @@ def main():
                     chosen = random.sample(samples, min(n_samples, len(samples)))
                     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                         futures = [
-                            executor.submit(process_sample, sample, model_name, temp_set, phase, temp)
+                            executor.submit(
+                                process_sample,
+                                sample,
+                                model_name,
+                                temp_set,
+                                phase,
+                                temp,
+                            )
                             for idx, sample in chosen
                         ]
-                        for future in tqdm(as_completed(futures), total=len(futures), desc=f"{model_name} {phase} {temp}K", leave=False):
+                        for future in tqdm(
+                            as_completed(futures),
+                            total=len(futures),
+                            desc=f"{model_name} {phase} {temp}K",
+                            leave=False,
+                        ):
                             result = future.result()
                             if result is not None:
                                 # Calculate error for this sample
@@ -221,28 +273,34 @@ def main():
                                 error = {}
                                 for k in TARGET_PROPERTIES:
                                     try:
-                                        if result['parsed'][k] is not None and gt[k] is not None:
-                                            error[k] = abs(result['parsed'][k] - gt[k])
+                                        if (
+                                            result["parsed"][k] is not None
+                                            and gt[k] is not None
+                                        ):
+                                            error[k] = abs(result["parsed"][k] - gt[k])
                                         else:
                                             error[k] = None
                                     except Exception:
                                         error[k] = None
-                                result['error'] = error
-                                result['ground_truth'] = gt
+                                result["error"] = error
+                                result["ground_truth"] = gt
                                 model_results.append(result)
         # Compute MAE for this model
         mae = {}
         for k in TARGET_PROPERTIES:
-            vals = [r['error'][k] for r in model_results if r['error'][k] is not None]
+            vals = [r["error"][k] for r in model_results if r["error"][k] is not None]
             mae[k] = sum(vals) / len(vals) if vals else None
         # Save as a dict with results and mae
-        output = {'results': model_results, 'mae': mae}
-        output_dir = os.path.join("results", "llm_zero_shot2", model_name.replace('/', '_'))
+        output = {"results": model_results, "mae": mae}
+        output_dir = os.path.join(
+            "results", "llm_zero_shot2", model_name.replace("/", "_")
+        )
         os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, "llm_property_prediction_outputs.json")
         with open(output_path, "w") as f:
             json.dump(output, f, indent=2)
     print("Saved per-sample outputs and MAE for each model.")
 
+
 if __name__ == "__main__":
-    main() 
+    main()

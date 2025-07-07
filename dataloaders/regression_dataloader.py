@@ -1,9 +1,9 @@
 import os
-import pandas as pd
 from typing import Any, Callable, Dict, List, Optional
 
-import torch
 import numpy as np
+import pandas as pd
+import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
@@ -16,7 +16,7 @@ except ImportError:
 
 class LabelNormalizer:
     """Normalize regression labels using training data statistics."""
-    
+
     def __init__(self, method="standard"):
         self.method = method
         self.means = None
@@ -24,7 +24,7 @@ class LabelNormalizer:
         self.mins = None
         self.maxs = None
         self.fitted = False
-    
+
     def fit(self, labels):
         """Fit the normalizer on training labels."""
         if self.method == "standard":
@@ -40,24 +40,24 @@ class LabelNormalizer:
             ranges = np.where(ranges == 0, 1.0, ranges)
             self.maxs = self.mins + ranges
         self.fitted = True
-    
+
     def transform(self, labels):
         """Transform labels using fitted statistics."""
         if not self.fitted:
             raise ValueError("Normalizer must be fitted before transforming")
-        
+
         if self.method == "standard":
             return (labels - self.means) / self.stds
         elif self.method == "minmax":
             return (labels - self.mins) / (self.maxs - self.mins)
         else:
             raise ValueError(f"Unknown normalization method: {self.method}")
-    
+
     def inverse_transform(self, normalized_labels):
         """Inverse transform normalized labels back to original scale."""
         if not self.fitted:
             raise ValueError("Normalizer must be fitted before inverse transforming")
-        
+
         if self.method == "standard":
             return normalized_labels * self.stds + self.means
         elif self.method == "minmax":
@@ -103,14 +103,14 @@ class RegressionLoader(Dataset):
         self.fit_normalizer_on_data = fit_normalizer_on_data
         self.label_data = self._load_label_data()
         self.data = self._prepare_dataset()
-        
+
         # Initialize normalizer if needed
         self.normalizer = None
         if self.normalize_labels:
             self.normalizer = LabelNormalizer(method=self.normalization_method)
             if self.fit_normalizer_on_data:
                 self._fit_normalizer()
-    
+
     def _fit_normalizer(self):
         """Fit normalizer on all labels in this dataset."""
         all_labels = []
@@ -130,11 +130,13 @@ class RegressionLoader(Dataset):
                 label_dict["bond"],
             ]
             all_labels.append(label)
-        
+
         all_labels = np.array(all_labels)
         self.normalizer.fit(all_labels)
-        print(f"Fitted normalizer with method: {self.normalization_method} on {len(all_labels)} samples")
-    
+        print(
+            f"Fitted normalizer with method: {self.normalization_method} on {len(all_labels)} samples"
+        )
+
     def set_normalizer(self, normalizer: LabelNormalizer):
         """Set a pre-fitted normalizer for this dataset."""
         self.normalizer = normalizer
@@ -144,43 +146,47 @@ class RegressionLoader(Dataset):
         """Load regression labels from CSV file for each phase and temperature."""
         phases = ["anatase", "brookite", "rutile"]
         label_data = {phase: {} for phase in phases}
-        
+
         # Load data from the CSV file we generated
         csv_file = os.path.join(self.label_dir, "labels.csv")
         if not os.path.exists(csv_file):
             raise FileNotFoundError(f"CSV file not found: {csv_file}")
-        
+
         # Read the CSV file
         df = pd.read_csv(csv_file)
-        
+
         # Process each row
         for _, row in df.iterrows():
-            polymorph = row['Polymorph'].lower()  # Convert to lowercase to match phases
-            temp_str = row['Temperature']
-            temp = int(temp_str.replace('K', '')) if 'K' in temp_str else int(float(temp_str))
-            parameter = row['Parameter']
-            value = float(row['Value'])
-            
+            polymorph = row["Polymorph"].lower()  # Convert to lowercase to match phases
+            temp_str = row["Temperature"]
+            temp = (
+                int(temp_str.replace("K", ""))
+                if "K" in temp_str
+                else int(float(temp_str))
+            )
+            parameter = row["Parameter"]
+            value = float(row["Value"])
+
             # Initialize temperature dict if not exists
             if temp not in label_data[polymorph]:
                 label_data[polymorph][temp] = {}
-            
+
             # Map parameter names to match our expected format
             param_mapping = {
-                'HOMO': 'HOMO',
-                'LUMO': 'LUMO', 
-                'Eg': 'Eg',
-                'Ef': 'Ef',
-                'Et': 'Et',
-                'Eta': 'Eta',
-                'disp': 'disp',
-                'vol': 'vol', 
-                'bond': 'bond'
+                "HOMO": "HOMO",
+                "LUMO": "LUMO",
+                "Eg": "Eg",
+                "Ef": "Ef",
+                "Et": "Et",
+                "Eta": "Eta",
+                "disp": "disp",
+                "vol": "vol",
+                "bond": "bond",
             }
-            
+
             if parameter in param_mapping:
                 label_data[polymorph][temp][param_mapping[parameter]] = value
-        
+
         return label_data
 
     def _get_available_rotations(self, temp_dir: str) -> Dict[str, List[int]]:
@@ -242,7 +248,9 @@ class RegressionLoader(Dataset):
                 common_rotations = set(available_rotations[self.modalities[0]])
                 for modality in self.modalities[1:]:
                     if modality in available_rotations:
-                        common_rotations = common_rotations.intersection(set(available_rotations[modality]))
+                        common_rotations = common_rotations.intersection(
+                            set(available_rotations[modality])
+                        )
                 if not common_rotations:
                     continue
                 common_rotations = sorted(list(common_rotations))
@@ -255,11 +263,17 @@ class RegressionLoader(Dataset):
                         "rotation": rotation,
                     }
                     if "image" in self.modalities:
-                        entry["image_path"] = os.path.join(temp_dir, "images", f"rot_{rotation}.png")
+                        entry["image_path"] = os.path.join(
+                            temp_dir, "images", f"rot_{rotation}.png"
+                        )
                     if "xyz" in self.modalities or "element" in self.modalities:
-                        entry["xyz_path"] = os.path.join(temp_dir, "xyz", f"rot_{rotation}.xyz")
+                        entry["xyz_path"] = os.path.join(
+                            temp_dir, "xyz", f"rot_{rotation}.xyz"
+                        )
                     if "text" in self.modalities:
-                        entry["text_path"] = os.path.join(temp_dir, "text", f"rot_{rotation}.txt")
+                        entry["text_path"] = os.path.join(
+                            temp_dir, "text", f"rot_{rotation}.txt"
+                        )
                     data.append(entry)
         return data
 
@@ -284,29 +298,34 @@ class RegressionLoader(Dataset):
                 element_symbols.append(elem)
                 xyz_coords.append([float(x), float(y), float(z)])
             element_to_idx = {"Ti": 0, "O": 1}
-            z = torch.tensor([element_to_idx[el] for el in element_symbols], dtype=torch.long)
+            z = torch.tensor(
+                [element_to_idx[el] for el in element_symbols], dtype=torch.long
+            )
             pos = torch.tensor(xyz_coords, dtype=torch.float)
             temp = entry["temperature"]
             phase = entry["phase"]
             label_dict = self.label_data[phase][temp]
-            y = torch.tensor([
-                label_dict["HOMO"],
-                label_dict["LUMO"],
-                label_dict["Eg"],
-                label_dict["Ef"],
-                label_dict["Et"],
-                label_dict["Eta"],
-                label_dict["disp"],
-                label_dict["vol"],
-                label_dict["bond"],
-            ], dtype=torch.float)
-            
+            y = torch.tensor(
+                [
+                    label_dict["HOMO"],
+                    label_dict["LUMO"],
+                    label_dict["Eg"],
+                    label_dict["Ef"],
+                    label_dict["Et"],
+                    label_dict["Eta"],
+                    label_dict["disp"],
+                    label_dict["vol"],
+                    label_dict["bond"],
+                ],
+                dtype=torch.float,
+            )
+
             if self.normalize_labels and self.normalizer is not None:
                 y = torch.tensor(
                     self.normalizer.transform(y.numpy().reshape(1, -1)).flatten(),
-                    dtype=torch.float
+                    dtype=torch.float,
                 )
-            
+
             data = PyGData(z=z, pos=pos)
             data.y = y.unsqueeze(0)  # shape [1, 9]
             return data
@@ -339,29 +358,34 @@ class RegressionLoader(Dataset):
         temp = entry["temperature"]
         phase = entry["phase"]
         label_dict = self.label_data[phase][temp]
-        regression_label = torch.tensor([
-            label_dict["HOMO"],
-            label_dict["LUMO"],
-            label_dict["Eg"],
-            label_dict["Ef"],
-            label_dict["Et"],
-            label_dict["Eta"],
-            label_dict["disp"],
-            label_dict["vol"],
-            label_dict["bond"],
-        ], dtype=torch.float)
-        
+        regression_label = torch.tensor(
+            [
+                label_dict["HOMO"],
+                label_dict["LUMO"],
+                label_dict["Eg"],
+                label_dict["Ef"],
+                label_dict["Et"],
+                label_dict["Eta"],
+                label_dict["disp"],
+                label_dict["vol"],
+                label_dict["bond"],
+            ],
+            dtype=torch.float,
+        )
+
         if self.normalize_labels and self.normalizer is not None:
             regression_label = torch.tensor(
-                self.normalizer.transform(regression_label.numpy().reshape(1, -1)).flatten(),
-                dtype=torch.float
+                self.normalizer.transform(
+                    regression_label.numpy().reshape(1, -1)
+                ).flatten(),
+                dtype=torch.float,
             )
-        
+
         result["regression_label"] = regression_label
-        
+
         # Add metadata for evaluation scripts
         result["temperature"] = entry["temperature"]
         result["phase"] = entry["phase"]
         result["rotation"] = entry["rotation"]
-        
-        return result 
+
+        return result

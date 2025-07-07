@@ -1,8 +1,9 @@
 import os
-import pandas as pd
 from typing import Any, Callable, Dict, List, Optional
 
+import pandas as pd
 from torch.utils.data import Dataset
+
 
 class LLMLoader(Dataset):
     """PyTorch Dataset for LLM-style data.
@@ -31,43 +32,47 @@ class LLMLoader(Dataset):
     def _load_label_data(self) -> Dict[str, Dict[int, Dict[str, float]]]:
         phases = ["anatase", "brookite", "rutile"]
         label_data = {phase: {} for phase in phases}
-        
+
         # Load data from the CSV file we generated
         csv_file = os.path.join(self.label_dir, "labels.csv")
         if not os.path.exists(csv_file):
             raise FileNotFoundError(f"CSV file not found: {csv_file}")
-        
+
         # Read the CSV file
         df = pd.read_csv(csv_file)
-        
+
         # Process each row
         for _, row in df.iterrows():
-            polymorph = row['Polymorph'].lower()  # Convert to lowercase to match phases
-            temp_str = row['Temperature']
-            temp = int(temp_str.replace('K', '')) if 'K' in temp_str else int(float(temp_str))
-            parameter = row['Parameter']
-            value = float(row['Value'])
-            
+            polymorph = row["Polymorph"].lower()  # Convert to lowercase to match phases
+            temp_str = row["Temperature"]
+            temp = (
+                int(temp_str.replace("K", ""))
+                if "K" in temp_str
+                else int(float(temp_str))
+            )
+            parameter = row["Parameter"]
+            value = float(row["Value"])
+
             # Initialize temperature dict if not exists
             if temp not in label_data[polymorph]:
                 label_data[polymorph][temp] = {}
-            
+
             # Map parameter names to match our expected format
             param_mapping = {
-                'HOMO': 'HOMO',
-                'LUMO': 'LUMO', 
-                'Eg': 'Eg',
-                'Ef': 'Ef',
-                'Et': 'Et',
-                'Eta': 'Eta',
-                'disp': 'disp',
-                'vol': 'vol', 
-                'bond': 'bond'
+                "HOMO": "HOMO",
+                "LUMO": "LUMO",
+                "Eg": "Eg",
+                "Ef": "Ef",
+                "Et": "Et",
+                "Eta": "Eta",
+                "disp": "disp",
+                "vol": "vol",
+                "bond": "bond",
             }
-            
+
             if parameter in param_mapping:
                 label_data[polymorph][temp][param_mapping[parameter]] = value
-        
+
         return label_data
 
     def _get_available_rotations(self, temp_dir: str) -> Dict[str, List[int]]:
@@ -129,7 +134,9 @@ class LLMLoader(Dataset):
                 common_rotations = set(available_rotations[self.modalities[0]])
                 for modality in self.modalities[1:]:
                     if modality in available_rotations:
-                        common_rotations = common_rotations.intersection(set(available_rotations[modality]))
+                        common_rotations = common_rotations.intersection(
+                            set(available_rotations[modality])
+                        )
                 if not common_rotations:
                     continue
                 common_rotations = sorted(list(common_rotations))
@@ -142,11 +149,17 @@ class LLMLoader(Dataset):
                         "rotation": rotation,
                     }
                     if "image" in self.modalities:
-                        entry["image_path"] = os.path.join(temp_dir, "images", f"rot_{rotation}.png")
+                        entry["image_path"] = os.path.join(
+                            temp_dir, "images", f"rot_{rotation}.png"
+                        )
                     if "xyz" in self.modalities:
-                        entry["xyz_path"] = os.path.join(temp_dir, "xyz", f"rot_{rotation}.xyz")
+                        entry["xyz_path"] = os.path.join(
+                            temp_dir, "xyz", f"rot_{rotation}.xyz"
+                        )
                     if "text" in self.modalities:
-                        entry["text_path"] = os.path.join(temp_dir, "text", f"rot_{rotation}.txt")
+                        entry["text_path"] = os.path.join(
+                            temp_dir, "text", f"rot_{rotation}.txt"
+                        )
                     data.append(entry)
         return data
 
@@ -171,7 +184,7 @@ class LLMLoader(Dataset):
         temp = entry["temperature"]
         phase = entry["phase"]
         label_dict = self.label_data[phase][temp]
-        
+
         # Add all 9 targets from our CSV
         result["HOMO"] = label_dict["HOMO"]
         result["LUMO"] = label_dict["LUMO"]
@@ -182,5 +195,5 @@ class LLMLoader(Dataset):
         result["disp"] = label_dict["disp"]
         result["vol"] = label_dict["vol"]
         result["bond"] = label_dict["bond"]
-        
-        return result 
+
+        return result

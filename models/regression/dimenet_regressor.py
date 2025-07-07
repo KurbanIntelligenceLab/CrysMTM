@@ -16,4 +16,4 @@ DimeNetModel = DimeNetPlusPlusNoSparse(
     num_before_skip=1,
     num_after_skip=1,
     num_output_layers=1,
-) 
+)

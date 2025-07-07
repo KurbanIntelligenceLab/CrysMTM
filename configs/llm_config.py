@@ -1,6 +1,8 @@
 # LLM Task Configuration
 import os
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Data settings
@@ -35,15 +37,15 @@ MULTIMODAL_MODELS = {
 }
 
 MODELS_TO_TEST = [
-    {'name': "deepseek/deepseek-chat", 'use_openrouter': True},
-    {'name': "x-ai/grok-2-vision-1212", 'use_openrouter': True},
-    {'name': "x-ai/grok-2-1212", 'use_openrouter': True},
-    {'name': "meta-llama/llama-4-maverick", 'use_openrouter': True},
-    {'name': "mistralai/mistral-medium-3", 'use_openrouter': True},
-    {'name': "openai/gpt-4.1-mini", 'use_openrouter': True},
-    {'name': "google/gemini-2.5-flash-preview-05-20", 'use_openrouter': True},
-    {'name': "anthropic/claude-opus-4", 'use_openrouter': True},
-    {'name': "anthropic/claude-sonnet-4", 'use_openrouter': True}
+    {"name": "deepseek/deepseek-chat", "use_openrouter": True},
+    {"name": "x-ai/grok-2-vision-1212", "use_openrouter": True},
+    {"name": "x-ai/grok-2-1212", "use_openrouter": True},
+    {"name": "meta-llama/llama-4-maverick", "use_openrouter": True},
+    {"name": "mistralai/mistral-medium-3", "use_openrouter": True},
+    {"name": "openai/gpt-4.1-mini", "use_openrouter": True},
+    {"name": "google/gemini-2.5-flash-preview-05-20", "use_openrouter": True},
+    {"name": "anthropic/claude-opus-4", "use_openrouter": True},
+    {"name": "anthropic/claude-sonnet-4", "use_openrouter": True},
 ]
 
 # Target properties for prediction
@@ -52,4 +54,4 @@ TARGET_PROPERTIES = ["HOMO", "LUMO", "Eg", "Ef", "Et", "Eta", "disp", "vol", "bo
 # Processing settings
 MAX_RETRIES = 3
 MAX_WORKERS = 4
-TIMEOUT = 60 
+TIMEOUT = 60
