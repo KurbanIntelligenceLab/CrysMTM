@@ -1,10 +1,6 @@
-# CrysMTM Dataset Card
-
 ## Dataset Description
-
-- **Repository:** [CrysMTM](https://github.com/KurbanIntelligenceLab/CrysMTM)
 - **Paper:** CrysMTM: A Multiphase, Temperature-Resolved, Multimodal Dataset for Crystalline Materials
-- **Authors:** Can Polat, Erchin Serpedin, Mustafa Kurban, and Hasan Kurban
+- **Authors:** Can Polat, Erchin Serpedin, Mustafa Kurban, and Hasan Kurban.
 - **Point of Contact:** [Can Polat](johnpolat.com)
 
 ### Dataset Summary
