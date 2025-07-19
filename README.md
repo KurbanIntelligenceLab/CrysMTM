@@ -3,6 +3,8 @@
 - **Authors:** Can Polat, Erchin Serpedin, Mustafa Kurban, and Hasan Kurban.
 - **Point of Contact:** [Can Polat](johnpolat.com)
 
+*This work is a new version of TDCM25, ICLR 2025, dataset with improved sampling, focused property prediction task and now supplementary classification and foundational model tasks.*
+
 ### Dataset Summary
 
 CrysMTM is a comprehensive multiphase, temperature-resolved, multimodal dataset for crystalline materials research, specifically focused on titanium dioxide (TiO₂) polymorphs. The dataset is designed primarily for regression tasks to predict 9 key material properties from multimodal inputs. It contains three crystalline phases of TiO₂ (anatase, brookite, and rutile) across a temperature range of 0-1000K, with multiple data modalities including atomic coordinates, visual representations, and textual descriptions.
